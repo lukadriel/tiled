@@ -24,12 +24,14 @@
 
 #include <QCoreApplication>
 
-using namespace Tiled::Internal;
+using namespace Tiled;
 
 ChangeSelectedArea::ChangeSelectedArea(MapDocument *mapDocument,
-                                         const QRegion &newSelection)
+                                       const QRegion &newSelection,
+                                       QUndoCommand *parent)
     : QUndoCommand(QCoreApplication::translate("Undo Commands",
-                                               "Change Selection"))
+                                               "Change Selection"),
+                   parent)
     , mMapDocument(mapDocument)
     , mSelection(newSelection)
 {

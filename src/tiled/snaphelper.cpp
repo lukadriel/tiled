@@ -1,6 +1,7 @@
 /*
  * snaphelper.cpp
  * Copyright 2015, Thorbjørn Lindeijer <thorbjorn@lindeijer.nl>
+ * Copyright 2016, Mamed Ibrahimov <ibramlab@gmail.com>
  *
  * This file is part of Tiled.
  *
@@ -23,7 +24,6 @@
 #include "preferences.h"
 
 namespace Tiled {
-namespace Internal {
 
 SnapHelper::SnapHelper(const MapRenderer *renderer,
                        Qt::KeyboardModifiers modifiers)
@@ -32,6 +32,7 @@ SnapHelper::SnapHelper(const MapRenderer *renderer,
     Preferences *preferences = Preferences::instance();
     mSnapToGrid = preferences->snapToGrid();
     mSnapToFineGrid = preferences->snapToFineGrid();
+    mSnapToPixels = preferences->snapToPixels();
 
     if (modifiers & Qt::ControlModifier)
         toggleSnap();
@@ -55,8 +56,10 @@ void SnapHelper::snap(QPointF &pixelPos) const
             tileCoords = tileCoords.toPoint();
         }
         pixelPos = mRenderer->tileToPixelCoords(tileCoords);
+    } else if (mSnapToPixels) {
+        QPointF screenPos = mRenderer->pixelToScreenCoords(pixelPos);
+        pixelPos = mRenderer->screenToPixelCoords(screenPos.toPoint());
     }
 }
 
-} // namespace Internal
 } // namespace Tiled

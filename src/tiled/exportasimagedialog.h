@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SAVEASIMAGEDIALOG_H
-#define SAVEASIMAGEDIALOG_H
+#pragma once
 
 #include <QDialog>
 
@@ -28,7 +27,6 @@ class ExportAsImageDialog;
 }
 
 namespace Tiled {
-namespace Internal {
 
 class MapDocument;
 
@@ -48,24 +46,21 @@ public:
     ExportAsImageDialog(MapDocument *mapDocument,
                         const QString &fileName,
                         qreal currentScale,
-                        QWidget *parent = 0);
+                        QWidget *parent = nullptr);
     ~ExportAsImageDialog();
 
 public:
-    void accept();
+    void accept() override;
 
-private slots:
+private:
     void browse();
     void updateAcceptEnabled();
 
-private:
     Ui::ExportAsImageDialog *mUi;
     MapDocument *mMapDocument;
     qreal mCurrentScale;
+
     static QString mPath;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // SAVEASIMAGEDIALOG_H

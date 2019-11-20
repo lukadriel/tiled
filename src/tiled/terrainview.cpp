@@ -21,8 +21,8 @@
 
 #include "terrainview.h"
 
-#include "mapdocument.h"
 #include "tileset.h"
+#include "tilesetdocument.h"
 #include "terrain.h"
 #include "terrainmodel.h"
 #include "utils.h"
@@ -37,12 +37,11 @@
 #include <QWheelEvent>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 TerrainView::TerrainView(QWidget *parent)
     : QTreeView(parent)
     , mZoomable(new Zoomable(this))
-    , mMapDocument(0)
+    , mTilesetDocument(nullptr)
 {
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     setRootIsDecorated(false);
@@ -50,18 +49,32 @@ TerrainView::TerrainView(QWidget *parent)
     setItemsExpandable(false);
     setHeaderHidden(true);
 
-    connect(mZoomable, SIGNAL(scaleChanged(qreal)), SLOT(adjustScale()));
+    connect(mZoomable, &Zoomable::scaleChanged, this, &TerrainView::adjustScale);
 }
 
-void TerrainView::setMapDocument(MapDocument *mapDocument)
+void TerrainView::setTilesetDocument(TilesetDocument *tilesetDocument)
 {
-    mMapDocument = mapDocument;
+    mTilesetDocument = tilesetDocument;
 }
 
 Terrain *TerrainView::terrainAt(const QModelIndex &index) const
 {
     const QVariant data = model()->data(index, TerrainModel::TerrainRole);
     return data.value<Terrain*>();
+}
+
+bool TerrainView::event(QEvent *event)
+{
+    if (event->type() == QEvent::ShortcutOverride) {
+        if (static_cast<QKeyEvent *>(event)->key() == Qt::Key_Tab) {
+            if (indexWidget(currentIndex())) {
+                event->accept();
+                return true;
+            }
+        }
+    }
+
+    return QTreeView::event(event);
 }
 
 /**
@@ -87,22 +100,38 @@ void TerrainView::contextMenuEvent(QContextMenuEvent *event)
     Terrain *terrain = terrainAt(indexAt(event->pos()));
     if (!terrain)
         return;
+    if (!mTilesetDocument)
+        return;
 
-    const bool isExternal = terrain->tileset()->isExternal();
     QMenu menu;
 
-    QIcon propIcon(QLatin1String(":images/16x16/document-properties.png"));
+    QIcon propIcon(QLatin1String(":images/16/document-properties.png"));
 
     QAction *terrainProperties = menu.addAction(propIcon,
                                              tr("Terrain &Properties..."));
-    terrainProperties->setEnabled(!isExternal);
     Utils::setThemeIcon(terrainProperties, "document-properties");
-    menu.addSeparator();
 
-    connect(terrainProperties, SIGNAL(triggered()),
-            SLOT(editTerrainProperties()));
+    connect(terrainProperties, &QAction::triggered,
+            this, &TerrainView::editTerrainProperties);
 
     menu.exec(event->globalPos());
+}
+
+void TerrainView::keyPressEvent(QKeyEvent *event)
+{
+    if (mTilesetDocument) {
+        switch (event->key()) {
+        case Qt::Key_Delete:
+        case Qt::Key_Backspace:
+            if (terrainAt(currentIndex())) {
+                emit removeTerrainTypeRequested();
+                return;
+            }
+            break;
+        }
+    }
+
+    QTreeView::keyPressEvent(event);
 }
 
 void TerrainView::editTerrainProperties()
@@ -111,8 +140,8 @@ void TerrainView::editTerrainProperties()
     if (!terrain)
         return;
 
-    mMapDocument->setCurrentObject(terrain);
-    mMapDocument->emitEditCurrentObject();
+    mTilesetDocument->setCurrentObject(terrain);
+    emit mTilesetDocument->editCurrentObject();
 }
 
 void TerrainView::adjustScale()

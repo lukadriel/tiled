@@ -20,33 +20,50 @@
 
 #include "changetileprobability.h"
 
-#include "mapdocument.h"
+#include "tilesetdocument.h"
 #include "tile.h"
 
 #include <QCoreApplication>
 
 namespace Tiled {
-namespace Internal {
 
-ChangeTileProbability::ChangeTileProbability(MapDocument *mapDocument,
-                                             Tile *tile,
-                                             float probability)
-    : mMapDocument(mapDocument)
-    , mTile(tile)
-    , mProbability(probability)
+ChangeTileProbability::ChangeTileProbability(TilesetDocument *tilesetDocument,
+                                             const QList<Tile*>& tiles,
+                                             qreal probability)
+    : mTilesetDocument(tilesetDocument)
+    , mTiles(tiles)
 {
+    mProbabilities.reserve(tiles.size());
+    for (int i = 0; i < tiles.size(); ++ i)
+        mProbabilities.append(probability);
+
+    setText(QCoreApplication::translate("Undo Commands",
+                                        "Change Tile Probability"));
+}
+
+ChangeTileProbability::ChangeTileProbability(TilesetDocument *tilesetDocument,
+                                             const QList<Tile *> &tiles,
+                                             const QList<qreal> &probabilities,
+                                             QUndoCommand *parent)
+    : QUndoCommand(parent)
+    , mTilesetDocument(tilesetDocument)
+    , mTiles(tiles)
+    , mProbabilities(probabilities)
+{
+    Q_ASSERT(mTiles.size() == mProbabilities.size());
     setText(QCoreApplication::translate("Undo Commands",
                                         "Change Tile Probability"));
 }
 
 void ChangeTileProbability::swap()
 {
-    float probability = mTile->probability();
-    mTile->setProbability(mProbability);
-    mProbability = probability;
-    mMapDocument->emitTileProbabilityChanged(mTile);
+    for (int i = 0; i < mTiles.size(); ++ i) {
+        Tile *tile = mTiles[i];
+        qreal probability = tile->probability();
+        mTilesetDocument->setTileProbability(tile, mProbabilities[i]);
+        mProbabilities[i] = probability;
+    }
 }
 
-} // namespace Internal
 } // namespace Tiled
 

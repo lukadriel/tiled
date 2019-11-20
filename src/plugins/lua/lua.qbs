@@ -1,7 +1,7 @@
 import qbs 1.0
 
 TiledPlugin {
-    cpp.defines: ["LUA_LIBRARY"]
+    cpp.defines: base.concat(["LUA_LIBRARY"])
 
     files: [
         "lua_global.h",
@@ -9,5 +9,6 @@ TiledPlugin {
         "luaplugin.h",
         "luatablewriter.cpp",
         "luatablewriter.h",
+        "plugin.json",
     ]
 }

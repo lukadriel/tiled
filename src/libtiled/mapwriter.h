@@ -27,24 +27,27 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MAPWRITER_H
-#define MAPWRITER_H
+#pragma once
 
 #include "map.h"
 #include "tiled_global.h"
 
 #include <QString>
 
+#include <memory>
+
 class QIODevice;
 
 namespace Tiled {
 
 class Map;
+class MapObject;
+class ObjectTemplate;
 class Tileset;
 
 namespace Internal {
 class MapWriterPrivate;
-}
+} // namespace Internal
 
 /**
  * A QXmlStreamWriter based writer for the TMX and TSX formats.
@@ -93,6 +96,11 @@ public:
      */
     bool writeTileset(const Tileset &tileset, const QString &fileName);
 
+    void writeObjectTemplate(const ObjectTemplate *objectTemplate, QIODevice *device,
+                             const QString &path = QString());
+
+    bool writeObjectTemplate(const ObjectTemplate *objectTemplate, const QString &fileName);
+
     /**
      * Returns the error message for the last occurred error.
      */
@@ -104,10 +112,16 @@ public:
     void setDtdEnabled(bool enabled);
     bool isDtdEnabled() const;
 
+    /**
+     * Sets whether the XML output is minimized.
+     */
+    void setMinimizeOutput(bool enabled);
+    bool minimizeOutput() const;
+
 private:
-    Internal::MapWriterPrivate *d;
+    Q_DISABLE_COPY(MapWriter)
+
+    std::unique_ptr<Internal::MapWriterPrivate> d;
 };
 
 } // namespace Tiled
-
-#endif // MAPWRITER_H

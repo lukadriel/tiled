@@ -18,26 +18,26 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CREATERECTANGLEOBJECTTOOL_H
-#define CREATERECTANGLEOBJECTTOOL_H
+#pragma once
 
 #include "createscalableobjecttool.h"
 
 namespace Tiled {
 
-namespace Internal {
-
 class CreateRectangleObjectTool : public CreateScalableObjectTool
 {
     Q_OBJECT
+
 public:
     CreateRectangleObjectTool(QObject *parent);
-    void languageChanged();
+
+    void languageChanged() override;
+
 protected:
-    MapObject *createNewMapObject();
+    MapObject *createNewMapObject() override;
+
+private:
+    void languageChangedImpl();
 };
 
-}
-}
-
-#endif // CREATERECTANGLEOBJECTTOOL_H
+} // namespace Tiled

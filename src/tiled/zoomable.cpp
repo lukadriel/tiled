@@ -27,37 +27,9 @@
 
 #include <cmath>
 
-using namespace Tiled::Internal;
+#include "qtcompat_p.h"
 
-static const qreal zoomFactors[] = {
-    0.015625,
-    0.03125,
-    0.0625,
-    0.125,
-    0.25,
-    0.33,
-    0.5,
-    0.75,
-    1.0,
-    1.5,
-    2.0,
-    3.0,
-    4.0,
-    5.5,
-    8.0,
-    11.0,
-    16.0,
-    23.0,
-    32.0,
-    45.0,
-    64.0,
-    90.0,
-    128.0,
-    180.0,
-    256.0
-};
-const int zoomFactorCount = sizeof(zoomFactors) / sizeof(zoomFactors[0]);
-
+using namespace Tiled;
 
 static QString scaleToString(qreal scale)
 {
@@ -69,12 +41,37 @@ Zoomable::Zoomable(QObject *parent)
     : QObject(parent)
     , mScale(1)
     , mGestureStartScale(0)
-    , mComboBox(0)
+    , mComboBox(nullptr)
     , mComboRegExp(QLatin1String("^\\s*(\\d+)\\s*%?\\s*$"))
-    , mComboValidator(0)
+    , mComboValidator(nullptr)
 {
-    for (int i = 0; i < zoomFactorCount; i++)
-        mZoomFactors << zoomFactors[i];
+    mZoomFactors = QVector<qreal> {
+        0.015625,
+        0.03125,
+        0.0625,
+        0.125,
+        0.25,
+        0.33,
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+        5.5,
+        8.0,
+        11.0,
+        16.0,
+        23.0,
+        32.0,
+        45.0,
+        64.0,
+        90.0,
+        128.0,
+        180.0,
+        256.0
+    };
 }
 
 void Zoomable::setScale(qreal scale)
@@ -114,7 +111,7 @@ void Zoomable::handleWheelDelta(int delta)
 
         qreal scale = qBound(mZoomFactors.first(),
                              mScale * factor,
-                             mZoomFactors.back());
+                             mZoomFactors.last());
 
         // Round to at most four digits after the decimal point
         setScale(std::floor(scale * 10000 + 0.5) / 10000);
@@ -131,12 +128,12 @@ void Zoomable::handlePinchGesture(QPinchGesture *pinch)
         break;
     case Qt::GestureStarted:
         mGestureStartScale = mScale;
-        // fall through
+        Q_FALLTHROUGH();
     case Qt::GestureUpdated: {
-        qreal factor = pinch->scaleFactor();
+        qreal factor = pinch->totalScaleFactor();
         qreal scale = qBound(mZoomFactors.first(),
                              mGestureStartScale * factor,
-                             mZoomFactors.back());
+                             mZoomFactors.last());
         setScale(std::floor(scale * 10000 + 0.5) / 10000);
         break;
     }
@@ -148,7 +145,7 @@ void Zoomable::handlePinchGesture(QPinchGesture *pinch)
 
 void Zoomable::zoomIn()
 {
-    foreach (qreal scale, mZoomFactors) {
+    for (qreal scale : qAsConst(mZoomFactors)) {
         if (scale > mScale) {
             setScale(scale);
             break;
@@ -176,29 +173,29 @@ void Zoomable::setZoomFactors(const QVector<qreal>& factors)
     mZoomFactors = factors;
 }
 
-void Zoomable::connectToComboBox(QComboBox *comboBox)
+void Zoomable::setComboBox(QComboBox *comboBox)
 {
     if (mComboBox) {
         mComboBox->disconnect(this);
         if (mComboBox->lineEdit())
             mComboBox->lineEdit()->disconnect(this);
-        mComboBox->setValidator(0);
+        mComboBox->setValidator(nullptr);
     }
 
     mComboBox = comboBox;
 
     if (mComboBox) {
         mComboBox->clear();
-        foreach (qreal scale, mZoomFactors)
+        for (qreal scale : qAsConst(mZoomFactors))
             mComboBox->addItem(scaleToString(scale), scale);
         syncComboBox();
-        connect(mComboBox, SIGNAL(activated(int)),
-                this, SLOT(comboActivated(int)));
+        connect(mComboBox, static_cast<void(QComboBox::*)(int)>(&QComboBox::activated),
+                this, &Zoomable::comboActivated);
 
         mComboBox->setEditable(true);
         mComboBox->setInsertPolicy(QComboBox::NoInsert);
-        connect(mComboBox->lineEdit(), SIGNAL(editingFinished()),
-                this, SLOT(comboEdited()));
+        connect(mComboBox->lineEdit(), &QLineEdit::editingFinished,
+                this, &Zoomable::comboEdited);
 
         if (!mComboValidator)
             mComboValidator = new QRegExpValidator(mComboRegExp, this);

@@ -26,46 +26,56 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TMXRASTERIZER_H
-#define TMXRASTERIZER_H
+#pragma once
 
 #include "layer.h"
 
+#include "map.h"
+#include "mapreader.h"
 #include <QString>
 #include <QStringList>
 
 using namespace Tiled;
+
+class QImage;
+class QPainter;
 
 class TmxRasterizer
 {
 
 public:
     TmxRasterizer();
-    ~TmxRasterizer();
 
     qreal scale() const { return mScale; }
     int tileSize() const { return mTileSize; }
+    int size() const { return mSize; }
     bool useAntiAliasing() const { return mUseAntiAliasing; }
-    bool IgnoreVisibility() const { return mIgnoreVisibility; }
+    bool smoothImages() const { return mSmoothImages; }
+    bool ignoreVisibility() const { return mIgnoreVisibility; }
 
     void setScale(qreal scale) { mScale = scale; }
     void setTileSize(int tileSize) { mTileSize = tileSize; }
+    void setSize(int size) { mSize = size; }
     void setAntiAliasing(bool useAntiAliasing) { mUseAntiAliasing = useAntiAliasing; }
+    void setSmoothImages(bool smoothImages) { mSmoothImages = smoothImages; }
     void setIgnoreVisibility(bool IgnoreVisibility) { mIgnoreVisibility = IgnoreVisibility; }
 
     void setLayersToHide(QStringList layersToHide) { mLayersToHide = layersToHide; }
 
-    int render(const QString &mapFileName, const QString &imageFileName);
+    int render(const QString &fileName, const QString &imageFileName);
 
 private:
     qreal mScale;
     int mTileSize;
+    int mSize;
     bool mUseAntiAliasing;
+    bool mSmoothImages;
     bool mIgnoreVisibility;
     QStringList mLayersToHide;
 
-    bool shouldDrawLayer(Layer *layer);
-
+    void drawMapLayers(MapRenderer &renderer, QPainter &painter, Map &map, QPoint mapOffset = QPoint(0, 0)) const;
+    int renderMap(const QString &mapFileName, const QString &imageFileName);
+    int renderWorld(const QString &worldFileName, const QString &imageFileName);
+    int saveImage(const QString &imageFileName, const QImage &image) const;
+    bool shouldDrawLayer(const Layer *layer) const;
 };
-
-#endif // TMXRASTERIZER_H

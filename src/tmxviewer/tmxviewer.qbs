@@ -1,14 +1,12 @@
 import qbs 1.0
 
-QtGuiApplication {
+TiledQtGuiApplication {
     name: "tmxviewer"
 
     Depends { name: "libtiled" }
-    Depends { name: "Qt"; submodules: ["widgets"] }
+    Depends { name: "Qt"; submodules: ["widgets"]; versionAtLeast: "5.6" }
 
     cpp.includePaths: ["."]
-    cpp.rpaths: ["$ORIGIN/../lib"]
-    cpp.cxxLanguageVersion: "c++11"
 
     consoleApplication: false
 
@@ -19,13 +17,10 @@ QtGuiApplication {
     ]
 
     Group {
+        name: "Man page (Linux)"
+        condition: qbs.targetOS.contains("linux")
         qbs.install: true
-        qbs.installDir: {
-            if (qbs.targetOS.contains("windows") || qbs.targetOS.contains("osx"))
-                return ""
-            else
-                return "bin"
-        }
-        fileTagsFilter: product.type
+        qbs.installDir: "share/man/man1"
+        files: [ "../../man/tmxviewer.1" ]
     }
 }

@@ -23,11 +23,11 @@
 #include "map.h"
 #include "mapdocument.h"
 #include "objectgroup.h"
+#include "tilelayer.h"
 
 #include <QCoreApplication>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 ChangeMapProperty::ChangeMapProperty(MapDocument *mapDocument,
                                      ChangeMapProperty::Property property,
@@ -45,6 +45,10 @@ ChangeMapProperty::ChangeMapProperty(MapDocument *mapDocument,
         setText(QCoreApplication::translate("Undo Commands",
                                             "Change Tile Height"));
         break;
+    case Infinite:
+        setText(QCoreApplication::translate("Undo Commands",
+                                            "Change Infinite Property"));
+        break;
     case HexSideLength:
         setText(QCoreApplication::translate("Undo Commands",
                                             "Change Hex Side Length"));
@@ -61,6 +65,16 @@ ChangeMapProperty::ChangeMapProperty(MapDocument *mapDocument,
     , mMapDocument(mapDocument)
     , mProperty(BackgroundColor)
     , mBackgroundColor(backgroundColor)
+{
+}
+
+ChangeMapProperty::ChangeMapProperty(MapDocument *mapDocument,
+                                     QSize chunkSize)
+    : QUndoCommand(QCoreApplication::translate("Undo Commands",
+                                               "Change Chunk Size"))
+    , mMapDocument(mapDocument)
+    , mProperty(ChunkSize)
+    , mChunkSize(chunkSize)
 {
 }
 
@@ -141,6 +155,12 @@ void ChangeMapProperty::swap()
         mIntValue = tileHeight;
         break;
     }
+    case Infinite: {
+        const int infinite = map->infinite();
+        map->setInfinite(mIntValue);
+        mIntValue = infinite;
+        break;
+    }
     case Orientation: {
         const Map::Orientation orientation = map->orientation();
         map->setOrientation(mOrientation);
@@ -184,7 +204,19 @@ void ChangeMapProperty::swap()
         mLayerDataFormat = layerDataFormat;
         break;
     }
+    case CompressionLevel: {
+        const int compressionLevel = map->compressionLevel();
+        map->setCompressionLevel(mIntValue);
+        mIntValue = compressionLevel;
+        break;
+    }
+    case ChunkSize: {
+        const QSize chunkSize = map->chunkSize();
+        map->setChunkSize(mChunkSize);
+        mChunkSize = chunkSize;
+        break;
+    }
     }
 
-    mMapDocument->emitMapChanged();
+    emit mMapDocument->mapChanged();
 }

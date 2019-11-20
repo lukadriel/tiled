@@ -18,13 +18,11 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SELECTIONRECTANGLE_H
-#define SELECTIONRECTANGLE_H
+#pragma once
 
 #include <QGraphicsItem>
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * The rectangle used for indicating the dragged area when selecting items.
@@ -32,20 +30,17 @@ namespace Internal {
 class SelectionRectangle : public QGraphicsItem
 {
 public:
-    SelectionRectangle(QGraphicsItem *parent = 0);
+    SelectionRectangle(QGraphicsItem *parent = nullptr);
 
     void setRectangle(const QRectF &rectangle);
 
-    QRectF boundingRect() const;
+    QRectF boundingRect() const override;
     void paint(QPainter *painter,
                const QStyleOptionGraphicsItem *option,
-               QWidget *widget = 0);
+               QWidget *widget = nullptr) override;
 
 private:
     QRectF mRectangle;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // SELECTIONRECTANGLE_H

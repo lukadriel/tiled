@@ -18,29 +18,30 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "resizehelper.h"
+
 #include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
 
-#include "resizehelper.h"
-
-using namespace Tiled::Internal;
+using namespace Tiled;
 
 ResizeHelper::ResizeHelper(QWidget *parent)
     : QWidget(parent)
+    , mZoom(0)
 {
     setMinimumSize(20, 20);
     setOldSize(QSize(1, 1));
 }
 
-void ResizeHelper::setOldSize(const QSize &size)
+void ResizeHelper::setOldSize(QSize size)
 {
     mOldSize = size;
     recalculateMinMaxOffset();
     recalculateScale();
 }
 
-void ResizeHelper::setNewSize(const QSize &size)
+void ResizeHelper::setNewSize(QSize size)
 {
     mNewSize = size;
     recalculateMinMaxOffset();
@@ -57,7 +58,7 @@ void ResizeHelper::setOffsetY(int y)
     setOffset(QPoint(mOffset.x(), y));
 }
 
-void ResizeHelper::setOffset(const QPoint &offset)
+void ResizeHelper::setOffset(QPoint offset)
 {
     // Clamp the offset within the offset bounds
     const QPoint newOffset(
@@ -98,6 +99,11 @@ void ResizeHelper::setNewHeight(int height)
     recalculateScale();
 }
 
+void ResizeHelper::setMiniMapRenderer(std::function<QImage (QSize)> renderer)
+{
+    mMiniMapRenderer = renderer;
+}
+
 void ResizeHelper::paintEvent(QPaintEvent *)
 {
     const QSize _size = size() - QSize(2, 2);
@@ -122,10 +128,15 @@ void ResizeHelper::paintEvent(QPaintEvent *)
 
     pen.setColor(Qt::white);
 
-    painter.setPen(pen);
-    painter.setBrush(Qt::white);
     painter.setOpacity(0.5);
-    painter.drawRect(oldRect);
+
+    if (mMiniMap.isNull()) {
+        painter.setPen(pen);
+        painter.setBrush(Qt::white);
+        painter.drawRect(oldRect);
+    } else {
+        painter.drawImage(oldRect, mMiniMap);
+    }
 
     pen.setColor(Qt::black);
     pen.setStyle(Qt::DashLine);
@@ -148,12 +159,21 @@ void ResizeHelper::mouseMoveEvent(QMouseEvent *event)
     if (!mDragging)
         return;
 
-    const QPoint &pos = event->pos();
+    const QPoint pos = event->pos();
 
     if (pos != mMouseAnchorPoint) {
         setOffset(mOrigOffset + (pos - mMouseAnchorPoint) / mScale);
         emit offsetChanged(mOffset);
     }
+}
+
+void ResizeHelper::wheelEvent(QWheelEvent *event)
+{
+    if (event->delta() > 0)// zooming in
+        mZoom += 0.2;
+    else
+        mZoom -= 0.2;
+    recalculateScale();
 }
 
 void ResizeHelper::resizeEvent(QResizeEvent *)
@@ -179,8 +199,24 @@ void ResizeHelper::recalculateScale()
     // Pick the smallest scale
     const double scaleW = _size.width() / (double) width;
     const double scaleH = _size.height() / (double) height;
-    mScale = (scaleW < scaleH) ? scaleW : scaleH;
+    double newScale = qMin(scaleW, scaleH);
 
+    const double maxScaleW = _size.width() / (double) mNewSize.width();
+    const double maxScaleH = _size.height() / (double) mNewSize.height();
+    const double maxScaleAdd = qMin(maxScaleW, maxScaleH) - newScale;
+
+    mZoom = qMin(mZoom, maxScaleAdd);
+    mZoom = qMax(mZoom, 0.0);
+
+    newScale += mZoom;
+
+    if (newScale != mScale && mMiniMapRenderer) {
+        const qreal ratio = devicePixelRatioF();
+        const QSize size = mOldSize * (newScale * ratio);
+        mMiniMap = mMiniMapRenderer(size);
+    }
+
+    mScale = newScale;
     update();
 }
 

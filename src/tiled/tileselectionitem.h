@@ -18,51 +18,46 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILESELECTIONITEM_H
-#define TILESELECTIONITEM_H
+#pragma once
 
-#include <QObject>
-#include <QGraphicsItem>
+#include <QGraphicsObject>
 
 namespace Tiled {
-namespace Internal {
 
+class Layer;
+
+class ChangeEvent;
 class MapDocument;
 
 /**
  * A graphics item displaying a tile selection.
  */
-class TileSelectionItem : public QObject,
-                          public QGraphicsItem
+class TileSelectionItem : public QGraphicsObject
 {
     Q_OBJECT
-    Q_INTERFACES(QGraphicsItem)
 
 public:
-    /**
-     * Constructs an item around the given selection model.
-     */
-    TileSelectionItem(MapDocument *mapDocument);
+    TileSelectionItem(MapDocument *mapDocument,
+                      QGraphicsItem *parent = nullptr);
 
     // QGraphicsItem
-    QRectF boundingRect() const;
+    QRectF boundingRect() const override;
 
     void paint(QPainter *painter,
                const QStyleOptionGraphicsItem *option,
-               QWidget *widget = 0);
+               QWidget *widget = nullptr) override;
 
-private slots:
+private:
+    void documentChanged(const ChangeEvent &change);
     void selectionChanged(const QRegion &newSelection,
                           const QRegion &oldSelection);
 
-private:
+    void currentLayerChanged(Layer *layer);
+
     void updateBoundingRect();
 
     MapDocument *mMapDocument;
     QRectF mBoundingRect;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // TILESELECTIONITEM_H

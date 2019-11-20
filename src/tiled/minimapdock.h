@@ -18,13 +18,11 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MINIMAPDOCK_H
-#define MINIMAPDOCK_H
+#pragma once
 
 #include <QDockWidget>
 
 namespace Tiled {
-namespace Internal {
 
 class MiniMap;
 class MapDocument;
@@ -37,20 +35,17 @@ class MiniMapDock : public QDockWidget
     Q_OBJECT
 
 public:
-    MiniMapDock(QWidget *parent = 0);
+    MiniMapDock(QWidget *parent = nullptr);
 
     void setMapDocument(MapDocument *);
 
 protected:
-    void changeEvent(QEvent *e);
+    void changeEvent(QEvent *e) override;
 
 private:
-    void retranslateUi();    
+    void retranslateUi();
 
     MiniMap *mMiniMap;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // MINIMAPDOCK_H

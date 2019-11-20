@@ -20,44 +20,49 @@
 
 #include "resizemapobject.h"
 
-#include "mapdocument.h"
+#include "changeevents.h"
+#include "document.h"
 #include "mapobject.h"
-#include "mapobjectmodel.h"
 
 #include <QCoreApplication>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-ResizeMapObject::ResizeMapObject(MapDocument *mapDocument,
+ResizeMapObject::ResizeMapObject(Document *document,
                                  MapObject *mapObject,
                                  const QSizeF &oldSize)
-    : mMapDocument(mapDocument)
-    , mMapObject(mapObject)
-    , mOldSize(oldSize)
-    , mNewSize(mapObject->size())
+    : ResizeMapObject(document,
+                      mapObject,
+                      mapObject->size(),
+                      oldSize)
 {
-    setText(QCoreApplication::translate("Undo Commands", "Resize Object"));
 }
 
-ResizeMapObject::ResizeMapObject(MapDocument *mapDocument,
+ResizeMapObject::ResizeMapObject(Document *document,
                                  MapObject *mapObject,
                                  const QSizeF &newSize,
                                  const QSizeF &oldSize)
-    : mMapDocument(mapDocument)
+    : mDocument(document)
     , mMapObject(mapObject)
     , mOldSize(oldSize)
     , mNewSize(newSize)
+    , mOldChangeState(mapObject->propertyChanged(MapObject::SizeProperty))
 {
     setText(QCoreApplication::translate("Undo Commands", "Resize Object"));
 }
 
 void ResizeMapObject::undo()
 {
-    mMapDocument->mapObjectModel()->setObjectSize(mMapObject, mOldSize);
+    mMapObject->setSize(mOldSize);
+    mMapObject->setPropertyChanged(MapObject::SizeProperty, mOldChangeState);
+
+    emit mDocument->changed(MapObjectsChangeEvent(mMapObject, MapObject::SizeProperty));
 }
 
 void ResizeMapObject::redo()
 {
-    mMapDocument->mapObjectModel()->setObjectSize(mMapObject, mNewSize);
+    mMapObject->setSize(mNewSize);
+    mMapObject->setPropertyChanged(MapObject::SizeProperty);
+
+    emit mDocument->changed(MapObjectsChangeEvent(mMapObject, MapObject::SizeProperty));
 }

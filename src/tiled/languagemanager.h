@@ -18,15 +18,13 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LANGUAGEMANAGER_H
-#define LANGUAGEMANAGER_H
+#pragma once
 
 #include <QStringList>
 
 class QTranslator;
 
 namespace Tiled {
-namespace Internal {
 
 class LanguageManager
 {
@@ -59,7 +57,4 @@ private:
     static LanguageManager *mInstance;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // LANGUAGEMANAGER_H

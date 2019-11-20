@@ -1,12 +1,16 @@
 TEMPLATE = subdirs
 SUBDIRS = csv \
+          defold \
+          defoldcollection \
           droidcraft \
           flare \
+          gmx \
           json \
+          json1 \
           lua \
           replicaisland \
-          tengine \
-          tmw
+          tbin \
+          tengine
 
 include(python/find_python.pri)
 

@@ -27,8 +27,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef IMAGELAYER_H
-#define IMAGELAYER_H
+#pragma once
 
 #include "tiled_global.h"
 
@@ -46,23 +45,18 @@ namespace Tiled {
  */
 class TILEDSHARED_EXPORT ImageLayer : public Layer
 {
-public:
-    /**
-     * Constructor.
-     */
-    ImageLayer(const QString &name, int x, int y, int width, int height);
+    Q_OBJECT
 
-    /**
-     * Destructor.
-     */
-    ~ImageLayer();
+public:
+    ImageLayer(const QString &name, int x, int y);
+    ~ImageLayer() override;
 
     QSet<SharedTileset> usedTilesets() const override { return QSet<SharedTileset>(); }
     bool referencesTileset(const Tileset *) const override { return false; }
     void replaceReferencesToTileset(Tileset *, Tileset *) override {}
 
-    bool canMergeWith(Layer *) const override { return false; }
-    Layer *mergedWith(Layer *) const override { return 0; }
+    bool canMergeWith(const Layer *) const override { return false; }
+    Layer *mergedWith(const Layer *) const override { return nullptr; }
 
     /**
      * Returns the transparent color, or an invalid color if no transparent
@@ -77,14 +71,14 @@ public:
     void setTransparentColor(const QColor &c) { mTransparentColor = c; }
 
     /**
-     *  Sets image source file name
+     * Sets the image source URL.
      */
-    void setSource(const QString &source) { mImageSource = source; }
+    void setSource(const QUrl &source) { mImageSource = source; }
 
     /**
-     * Returns the file name of the layer image.
+     * Returns the source URL of the layer image.
      */
-    const QString &imageSource() const { return mImageSource; }
+    const QUrl &imageSource() const { return mImageSource; }
 
     /**
       * Returns the image of this layer.
@@ -107,29 +101,29 @@ public:
      * whether the image could be loaded.
      *
      * @param image    the image to load the layer from
-     * @param fileName the file name of the image, which will be remembered
+     * @param source   the URL of the image, which will be remembered
      *                 as the image source of this layer.
      * @return <code>true</code> if loading was successful, otherwise
      *         returns <code>false</code>
      */
-    bool loadFromImage(const QImage &image, const QString &fileName);
+    bool loadFromImage(const QImage &image, const QUrl &source);
+    bool loadFromImage(const QImage &image, const QString &source);
+    bool loadFromImage(const QUrl &url);
 
     /**
      * Returns true if no image source has been set.
      */
-    bool isEmpty() const;
+    bool isEmpty() const override;
 
-    Layer *clone() const override;
+    ImageLayer *clone() const override;
 
 protected:
     ImageLayer *initializeClone(ImageLayer *clone) const;
 
 private:
-    QString mImageSource;
+    QUrl mImageSource;
     QColor mTransparentColor;
     QPixmap mImage;
 };
 
 } // namespace Tiled
-
-#endif // IMAGELAYER_H

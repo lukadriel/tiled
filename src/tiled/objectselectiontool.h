@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OBJECTSELECTIONTOOL_H
-#define OBJECTSELECTIONTOOL_H
+#pragma once
 
 #include "abstractobjecttool.h"
 
@@ -27,14 +26,16 @@
 #include <QSet>
 #include <QVector>
 
+#include <memory>
+
 class QGraphicsItem;
 
 namespace Tiled {
-namespace Internal {
 
-class RotateHandle;
+class Handle;
+class OriginIndicator;
 class ResizeHandle;
-class MapObjectItem;
+class RotateHandle;
 class SelectionRectangle;
 
 class ObjectSelectionTool : public AbstractObjectTool
@@ -42,33 +43,39 @@ class ObjectSelectionTool : public AbstractObjectTool
     Q_OBJECT
 
 public:
-    explicit ObjectSelectionTool(QObject *parent = 0);
-    ~ObjectSelectionTool();
+    explicit ObjectSelectionTool(QObject *parent = nullptr);
+    ~ObjectSelectionTool() override;
 
-    void activate(MapScene *scene);
-    void deactivate(MapScene *scene);
+    void activate(MapScene *scene) override;
+    void deactivate(MapScene *scene) override;
 
-    void keyPressed(QKeyEvent *);
-    void mouseEntered();
+    void keyPressed(QKeyEvent *) override;
+    void mouseEntered() override;
+    void mouseLeft() override;
     void mouseMoved(const QPointF &pos,
-                    Qt::KeyboardModifiers modifiers);
-    void mousePressed(QGraphicsSceneMouseEvent *event);
-    void mouseReleased(QGraphicsSceneMouseEvent *event);
-    void modifiersChanged(Qt::KeyboardModifiers modifiers);
+                    Qt::KeyboardModifiers modifiers) override;
+    void mousePressed(QGraphicsSceneMouseEvent *event) override;
+    void mouseReleased(QGraphicsSceneMouseEvent *event) override;
+    void mouseDoubleClicked(QGraphicsSceneMouseEvent *event) override;
+    void modifiersChanged(Qt::KeyboardModifiers modifiers) override;
 
-    void languageChanged();
+    void languageChanged() override;
 
-private slots:
-    void updateHandles();
-    void updateHandleVisibility();
-
-    void objectsRemoved(const QList<MapObject *> &);
+protected:
+    void changeEvent(const ChangeEvent &event) override;
 
 private:
+    void updateHandles();
+    void updateHandlesAndOrigin();
+    void updateHandleVisibility();
+
+    void objectsAboutToBeRemoved(const QList<MapObject *> &);
+
     enum Action {
         NoAction,
         Selecting,
         Moving,
+        MovingOrigin,
         Rotating,
         Resizing
     };
@@ -78,17 +85,24 @@ private:
         Rotate,
     };
 
+    void updateHandlesImpl(bool resetOriginIndicator);
+
+    void updateHover(const QPointF &pos);
     void updateSelection(const QPointF &pos,
                          Qt::KeyboardModifiers modifiers);
 
     void startSelecting();
 
-    void startMoving(Qt::KeyboardModifiers modifiers);
+    void startMoving(const QPointF &pos, Qt::KeyboardModifiers modifiers);
     void updateMovingItems(const QPointF &pos,
                            Qt::KeyboardModifiers modifiers);
     void finishMoving(const QPointF &pos);
 
-    void startRotating();
+    void startMovingOrigin(const QPointF &pos);
+    void updateMovingOrigin(const QPointF &pos, Qt::KeyboardModifiers modifiers);
+    void finishMovingOrigin();
+
+    void startRotating(const QPointF &pos);
     void updateRotatingItems(const QPointF &pos,
                              Qt::KeyboardModifiers modifiers);
     void finishRotating(const QPointF &pos);
@@ -100,19 +114,29 @@ private:
                                   const QPointF &screenPos,
                                   Qt::KeyboardModifiers modifiers);
     void finishResizing(const QPointF &pos);
-    
+
     void setMode(Mode mode);
     void saveSelectionState();
 
-    const QPointF snapToGrid(const QPointF &pos,
-                             Qt::KeyboardModifiers modifiers);
+    enum AbortReason {
+        UserInteraction,
+        Deactivated
+    };
+
+    void abortCurrentAction(AbortReason reason = UserInteraction,
+                            const QList<MapObject *> &removedObjects = QList<MapObject*>());
+
+    void refreshCursor();
+
+    QPointF snapToGrid(const QPointF &pos,
+                       Qt::KeyboardModifiers modifiers);
 
     QList<MapObject*> changingObjects() const;
 
     struct MovingObject
     {
-        MapObjectItem *item;
-        QPointF oldItemPosition;
+        MapObject *mapObject;
+        QPointF oldScreenPosition;
 
         QPointF oldPosition;
         QSizeF oldSize;
@@ -120,29 +144,33 @@ private:
         qreal oldRotation;
     };
 
-    SelectionRectangle *mSelectionRectangle;
-    QGraphicsItem *mOriginIndicator;
+    std::unique_ptr<SelectionRectangle> mSelectionRectangle;
+    std::unique_ptr<QGraphicsItem> mOriginIndicator;
     RotateHandle *mRotateHandles[4];
     ResizeHandle *mResizeHandles[8];
     bool mMousePressed;
-    MapObjectItem *mClickedObjectItem;
+
+    MapObject *mHoveredObject;
+    Handle *mHoveredHandle;
+
+    MapObject *mClickedObject;
+    OriginIndicator *mClickedOriginIndicator;
     RotateHandle *mClickedRotateHandle;
     ResizeHandle *mClickedResizeHandle;
 
     QVector<MovingObject> mMovingObjects;
 
     QPointF mAlignPosition;
-    QPointF mOrigin;
+    QPointF mOriginPos;
     bool mResizingLimitHorizontal;
     bool mResizingLimitVertical;
     Mode mMode;
     Action mAction;
     QPointF mStart;
+    QPointF mStartOffset;
+    QPointF mLastMousePos;
     QPoint mScreenStart;
     Qt::KeyboardModifiers mModifiers;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // OBJECTSELECTIONTOOL_H

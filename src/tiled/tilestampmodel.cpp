@@ -20,10 +20,9 @@
 
 #include "tilestampmodel.h"
 
-#include "thumbnailrenderer.h"
+#include "minimaprenderer.h"
 
 namespace Tiled {
-namespace Internal {
 
 TileStampModel::TileStampModel(QObject *parent)
     : QAbstractItemModel(parent)
@@ -117,9 +116,16 @@ bool TileStampModel::setData(const QModelIndex &index, const QVariant &value, in
     return false;
 }
 
-static QPixmap renderThumbnail(const ThumbnailRenderer &renderer)
+static QPixmap renderThumbnail(const MiniMapRenderer &renderer)
 {
-    return QPixmap::fromImage(renderer.render(QSize(64, 64))
+    const MiniMapRenderer::RenderFlags renderFlags(MiniMapRenderer::DrawMapObjects |
+                                                   MiniMapRenderer::DrawImageLayers |
+                                                   MiniMapRenderer::DrawTileLayers |
+                                                   MiniMapRenderer::IgnoreInvisibleLayer |
+                                                   MiniMapRenderer::SmoothPixmapTransform |
+                                                   MiniMapRenderer::IncludeOverhangingTiles);
+
+    return QPixmap::fromImage(renderer.render(QSize(64, 64), renderFlags)
                               .scaled(32, 32,
                                       Qt::IgnoreAspectRatio,
                                       Qt::SmoothTransformation));
@@ -138,12 +144,11 @@ QVariant TileStampModel::data(const QModelIndex &index, int role) const
                 Map *map = stamp.variations().first().map;
                 QPixmap thumbnail = mThumbnailCache.value(map);
                 if (thumbnail.isNull()) {
-                    ThumbnailRenderer renderer(map);
+                    MiniMapRenderer renderer(map);
                     thumbnail = renderThumbnail(renderer);
                     mThumbnailCache.insert(map, thumbnail);
                 }
                 return thumbnail;
-                break;
             }
             }
         } else if (index.column() == 1) {   // sum of probabilities
@@ -164,12 +169,11 @@ QVariant TileStampModel::data(const QModelIndex &index, int role) const
                 Map *map = variation->map;
                 QPixmap thumbnail = mThumbnailCache.value(map);
                 if (thumbnail.isNull()) {
-                    ThumbnailRenderer renderer(map);
+                    MiniMapRenderer renderer(map);
                     thumbnail = renderThumbnail(renderer);
                     mThumbnailCache.insert(map, thumbnail);
                 }
                 return thumbnail;
-                break;
             }
             }
         } else if (index.column() == 1) {
@@ -208,7 +212,7 @@ bool TileStampModel::removeRows(int row, int count, const QModelIndex &parent)
 
         for (; count > 0; --count) {
             mThumbnailCache.remove(stamp.variations().at(row).map);
-            stamp.deleteVariation(row);
+            delete stamp.takeVariation(row);
         }
         endRemoveRows();
 
@@ -261,7 +265,7 @@ bool TileStampModel::isStamp(const QModelIndex &index) const
 const TileStampVariation *TileStampModel::variationAt(const QModelIndex &index) const
 {
     if (!index.isValid())
-        return 0;
+        return nullptr;
 
     QModelIndex parent = index.parent();
     if (isStamp(parent)) {
@@ -269,7 +273,7 @@ const TileStampVariation *TileStampModel::variationAt(const QModelIndex &index) 
         return &stamp.variations().at(index.row());
     }
 
-    return 0;
+    return nullptr;
 }
 
 void TileStampModel::addStamp(const TileStamp &stamp)
@@ -331,5 +335,4 @@ void TileStampModel::clear()
     endResetModel();
 }
 
-} // namespace Internal
 } // namespace Tiled

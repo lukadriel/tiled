@@ -18,17 +18,16 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ABSTRACTOBJECTTOOL_H
-#define ABSTRACTOBJECTTOOL_H
+#pragma once
 
 #include "abstracttool.h"
+
+class QAction;
 
 namespace Tiled {
 
 class MapObject;
 class ObjectGroup;
-
-namespace Internal {
 
 class MapObjectItem;
 
@@ -39,55 +38,71 @@ class MapObjectItem;
 class AbstractObjectTool : public AbstractTool
 {
     Q_OBJECT
+    Q_INTERFACES(Tiled::AbstractTool)
 
 public:
     /**
      * Constructs an abstract object tool with the given \a name and \a icon.
      */
-    AbstractObjectTool(const QString &name,
+    AbstractObjectTool(Id id,
+                       const QString &name,
                        const QIcon &icon,
                        const QKeySequence &shortcut,
-                       QObject *parent = 0);
+                       QObject *parent = nullptr);
 
-    void activate(MapScene *scene);
-    void deactivate(MapScene *scene);
+    void activate(MapScene *scene) override;
+    void deactivate(MapScene *scene) override;
 
-    void keyPressed(QKeyEvent *event);
-    void mouseLeft();
-    void mouseMoved(const QPointF &pos, Qt::KeyboardModifiers modifiers);
-    void mousePressed(QGraphicsSceneMouseEvent *event);
+    void keyPressed(QKeyEvent *event) override;
+    void mouseLeft() override;
+    void mouseMoved(const QPointF &pos, Qt::KeyboardModifiers modifiers) override;
+    void mousePressed(QGraphicsSceneMouseEvent *event) override;
+
+    void languageChanged() override;
+
+    void populateToolBar(QToolBar*) override;
 
 protected:
     /**
      * Overridden to only enable this tool when the currently selected layer is
      * an object group.
      */
-    void updateEnabledState();
+    void updateEnabledState() override;
 
     MapScene *mapScene() const { return mMapScene; }
     ObjectGroup *currentObjectGroup() const;
-    MapObjectItem *topMostObjectItemAt(QPointF pos) const;
+    QList<MapObject*> mapObjectsAt(const QPointF &pos) const;
+    MapObject *topMostMapObjectAt(const QPointF &pos) const;
 
-private slots:
+private:
     void duplicateObjects();
     void removeObjects();
+    void resetTileSize();
+    void saveSelectedObject();
+    void detachSelectedObjects();
+    void replaceObjectsWithTemplate();
+    void resetInstances();
+    void changeTile();
 
     void flipHorizontally();
     void flipVertically();
+    void rotateLeft();
+    void rotateRight();
 
     void raise();
     void lower();
     void raiseToTop();
     void lowerToBottom();
 
-private:
-    void showContextMenu(MapObjectItem *clickedObject,
+    void showContextMenu(MapObject *clickedObject,
                          QPoint screenPos);
 
     MapScene *mMapScene;
+
+    QAction *mFlipHorizontal;
+    QAction *mFlipVertical;
+    QAction *mRotateLeft;
+    QAction *mRotateRight;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ABSTRACTOBJECTTOOL_H

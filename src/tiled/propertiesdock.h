@@ -18,10 +18,10 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PROPERTIESDOCK_H
-#define PROPERTIESDOCK_H
+#pragma once
 
 #include <QDockWidget>
+#include <QVariant>
 
 class QtBrowserItem;
 
@@ -30,9 +30,7 @@ namespace Tiled {
 class Object;
 class Tileset;
 
-namespace Internal {
-
-class MapDocument;
+class Document;
 class PropertyBrowser;
 
 class PropertiesDock : public QDockWidget
@@ -40,37 +38,42 @@ class PropertiesDock : public QDockWidget
     Q_OBJECT
 
 public:
-    explicit PropertiesDock(QWidget *parent = 0);
+    explicit PropertiesDock(QWidget *parent = nullptr);
+
+    /**
+     * Sets the \a document on which this properties dock will act.
+     */
+    void setDocument(Document *document);
 
 public slots:
     void bringToFront();
+    void selectCustomProperty(const QString &name);
 
 protected:
-    bool event(QEvent *event);
-
-private slots:
-    void mapDocumentChanged(MapDocument *mapDocument);
-    void currentObjectChanged(Object *object);
-    void currentItemChanged(QtBrowserItem *item);
-    void tilesetFileNameChanged(Tileset *tileset);
-
-    void addProperty();
-    void addProperty(const QString &name);
-    void removeProperty();
-    void renameProperty();
-    void renameProperty(const QString &name);
+    bool event(QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
+    void currentObjectChanged(Object *object);
+    void updateActions();
+
+    void cutProperties();
+    bool copyProperties();
+    void pasteProperties();
+    void openAddPropertyDialog();
+    void addProperty(const QString &name, const QVariant &value);
+    void removeProperties();
+    void renameProperty();
+    void renamePropertyTo(const QString &name);
+    void showContextMenu(const QPoint& pos);
+
     void retranslateUi();
 
-    MapDocument *mMapDocument;
+    Document *mDocument;
     PropertyBrowser *mPropertyBrowser;
     QAction *mActionAddProperty;
     QAction *mActionRemoveProperty;
     QAction *mActionRenameProperty;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // PROPERTIESDOCK_H

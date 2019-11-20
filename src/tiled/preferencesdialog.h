@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PREFERENCESDIALOG_H
-#define PREFERENCESDIALOG_H
+#pragma once
 
 #include <QDialog>
 
@@ -30,9 +29,6 @@ class PreferencesDialog;
 }
 
 namespace Tiled {
-namespace Internal {
-
-class ObjectTypesModel;
 
 /**
  * The preferences dialog. Allows the user to configure some general behaviour
@@ -43,38 +39,24 @@ class PreferencesDialog : public QDialog
     Q_OBJECT
 
 public:
-    PreferencesDialog(QWidget *parent = 0);
-    ~PreferencesDialog();
+    PreferencesDialog(QWidget *parent = nullptr);
+    ~PreferencesDialog() override;
 
 protected:
-    void changeEvent(QEvent *e);
-
-private slots:
-    void languageSelected(int index);
-    void objectLineWidthChanged(double lineWidth);
-    void useOpenGLToggled(bool useOpenGL);
-    void useAutomappingDrawingToggled(bool enabled);
-    void openLastFilesToggled(bool enabled);
-
-    void addObjectType();
-    void selectedObjectTypesChanged();
-    void removeSelectedObjectTypes();
-    void objectTypeIndexClicked(const QModelIndex &index);
-    void applyObjectTypes();
-    void importObjectTypes();
-    void exportObjectTypes();
+    void changeEvent(QEvent *e) override;
 
 private:
+    void languageSelected(int index);
+
     void fromPreferences();
-    void toPreferences();
+
+    void retranslateUi();
+
+    void styleComboChanged();
 
     Ui::PreferencesDialog *mUi;
     QStringList mLanguages;
-    ObjectTypesModel *mObjectTypesModel;
 };
 
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // PREFERENCESDIALOG_H

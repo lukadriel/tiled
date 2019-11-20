@@ -26,10 +26,13 @@
 #include <QCoreApplication>
 
 namespace Tiled {
-namespace Internal {
 
-ResizeMap::ResizeMap(MapDocument *mapDocument, const QSize &size)
-    : QUndoCommand(QCoreApplication::translate("Undo Commands", "Resize Map"))
+ResizeMap::ResizeMap(MapDocument *mapDocument,
+                     QSize size,
+                     QUndoCommand *parent)
+    : QUndoCommand(QCoreApplication::translate("Undo Commands",
+                                               "Resize Map"),
+                   parent)
     , mMapDocument(mapDocument)
     , mSize(size)
 {
@@ -53,8 +56,7 @@ void ResizeMap::swapSize()
     map->setHeight(mSize.height());
     mSize = oldSize;
 
-    mMapDocument->emitMapChanged();
+    emit mMapDocument->mapChanged();
 }
 
-} // namespace Internal
 } // namespace Tiled

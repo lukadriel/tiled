@@ -18,10 +18,9 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILED_INTERNAL_TILEANIMATIONEDITOR_H
-#define TILED_INTERNAL_TILEANIMATIONEDITOR_H
+#pragma once
 
-#include <QWidget>
+#include <QDialog>
 #include <QModelIndex>
 
 namespace Ui {
@@ -30,26 +29,23 @@ class TileAnimationEditor;
 
 namespace Tiled {
 
+class Object;
 class Tile;
+class TileAnimationDriver;
 class Tileset;
 
-namespace Internal {
-
 class FrameListModel;
-class MapDocument;
-class TileAnimationDriver;
+class TilesetDocument;
 
-class TileAnimationEditor : public QWidget
+class TileAnimationEditor : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit TileAnimationEditor(QWidget *parent = 0);
+    explicit TileAnimationEditor(QWidget *parent = nullptr);
     ~TileAnimationEditor();
 
-    void setMapDocument(MapDocument *mapDocument);
-
-    void writeSettings();
+    void setTilesetDocument(TilesetDocument *tilesetDocument);
 
 signals:
     void closed();
@@ -58,40 +54,40 @@ public slots:
     void setTile(Tile *tile);
 
 protected:
-    void closeEvent(QCloseEvent *);
-    void changeEvent(QEvent *e);
+    void closeEvent(QCloseEvent *) override;
+    void changeEvent(QEvent *e) override;
 
-    void showEvent(QShowEvent *);
-    void hideEvent(QHideEvent *);
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
 
-private slots:
+private:
     void framesEdited();
     void tileAnimationChanged(Tile *tile);
-    void tilesetFileNameChanged(Tileset *);
+    void currentObjectChanged(Object *object);
 
     void addFrameForTileAt(const QModelIndex &index);
 
+    void setFrameTime();
+    void setDefaultFrameTime(int duration);
     void undo();
     void redo();
     void delete_();
 
     void advancePreviewAnimation(int ms);
     void resetPreview();
+    bool updatePreviewPixmap();
 
-private:
     Ui::TileAnimationEditor *mUi;
 
-    MapDocument *mMapDocument;
+    TilesetDocument *mTilesetDocument;
     Tile *mTile;
     FrameListModel *mFrameListModel;
     bool mApplyingChanges;
+    bool mSuppressUndo;
 
     TileAnimationDriver *mPreviewAnimationDriver;
     int mPreviewFrameIndex;
     int mPreviewUnusedTime;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // TILED_INTERNAL_TILEANIMATIONEDITOR_H

@@ -3,13 +3,17 @@ Project {
 
     references: [
         "csv",
+        "defold",
+        "defoldcollection",
         "droidcraft",
         "flare",
+        "gmx",
         "json",
+        "json1",
         "lua",
         "python",
         "replicaisland",
-        "tengine",
-        "tmw",
+        "tbin",
+        "tengine"
     ]
 }

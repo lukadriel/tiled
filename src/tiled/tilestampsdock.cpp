@@ -20,7 +20,9 @@
 
 #include "tilestampsdock.h"
 
+#include "actionmanager.h"
 #include "documentmanager.h"
+#include "filteredit.h"
 #include "preferences.h"
 #include "tilestamp.h"
 #include "tilestampmanager.h"
@@ -38,14 +40,13 @@
 #include <QVBoxLayout>
 
 namespace Tiled {
-namespace Internal {
 
 TileStampsDock::TileStampsDock(TileStampManager *stampManager, QWidget *parent)
     : QDockWidget(parent)
     , mTileStampManager(stampManager)
     , mTileStampModel(stampManager->tileStampModel())
     , mProxyModel(new QSortFilterProxyModel(mTileStampModel))
-    , mFilterEdit(new QLineEdit(this))
+    , mFilterEdit(new FilterEdit(this))
     , mNewStamp(new QAction(this))
     , mAddVariation(new QAction(this))
     , mDuplicate(new QAction(this))
@@ -68,23 +69,21 @@ TileStampsDock::TileStampsDock(TileStampManager *stampManager, QWidget *parent)
     mTileStampView->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
 
     mTileStampView->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(mTileStampView, SIGNAL(customContextMenuRequested(QPoint)),
-            SLOT(showContextMenu(QPoint)));
+    connect(mTileStampView, &QWidget::customContextMenuRequested,
+            this, &TileStampsDock::showContextMenu);
 
-    mNewStamp->setIcon(QIcon(QLatin1String(":images/16x16/document-new.png")));
-    mAddVariation->setIcon(QIcon(QLatin1String(":/images/16x16/add.png")));
-    mDuplicate->setIcon(QIcon(QLatin1String(":/images/16x16/stock-duplicate-16.png")));
-    mDelete->setIcon(QIcon(QLatin1String(":images/16x16/edit-delete.png")));
-    mChooseFolder->setIcon(QIcon(QLatin1String(":images/16x16/document-open.png")));
+    mNewStamp->setIcon(QIcon(QLatin1String(":images/16/document-new.png")));
+    mAddVariation->setIcon(QIcon(QLatin1String(":/images/16/add.png")));
+    mDuplicate->setIcon(QIcon(QLatin1String(":/images/16/stock-duplicate-16.png")));
+    mDelete->setIcon(QIcon(QLatin1String(":images/16/edit-delete.png")));
+    mChooseFolder->setIcon(QIcon(QLatin1String(":images/16/document-open.png")));
 
     Utils::setThemeIcon(mNewStamp, "document-new");
     Utils::setThemeIcon(mAddVariation, "add");
     Utils::setThemeIcon(mDelete, "edit-delete");
     Utils::setThemeIcon(mChooseFolder, "document-open");
 
-#if QT_VERSION >= 0x050200
-    mFilterEdit->setClearButtonEnabled(true);
-#endif
+    mFilterEdit->setFilteredView(mTileStampView);
 
     connect(mFilterEdit, &QLineEdit::textChanged,
             mProxyModel, &QSortFilterProxyModel::setFilterFixedString);
@@ -98,18 +97,21 @@ TileStampsDock::TileStampsDock(TileStampManager *stampManager, QWidget *parent)
     connect(mDelete, &QAction::triggered, this, &TileStampsDock::delete_);
     connect(mChooseFolder, &QAction::triggered, this, &TileStampsDock::chooseFolder);
 
+    ActionManager::registerAction(mNewStamp, "NewStamp");
+    ActionManager::registerAction(mAddVariation, "AddStampVariation");
+
     mDuplicate->setEnabled(false);
     mDelete->setEnabled(false);
     mAddVariation->setEnabled(false);
 
     QWidget *widget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(widget);
-    layout->setMargin(5);
+    layout->setMargin(0);
 
     QToolBar *buttonContainer = new QToolBar;
     buttonContainer->setFloatable(false);
     buttonContainer->setMovable(false);
-    buttonContainer->setIconSize(QSize(16, 16));
+    buttonContainer->setIconSize(Utils::smallIconSize());
 
     buttonContainer->addAction(mNewStamp);
     buttonContainer->addAction(mAddVariation);
@@ -131,8 +133,10 @@ TileStampsDock::TileStampsDock(TileStampManager *stampManager, QWidget *parent)
     layout->addLayout(listAndToolBar);
 
     QItemSelectionModel *selectionModel = mTileStampView->selectionModel();
-    connect(selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-            this, SLOT(currentRowChanged(QModelIndex)));
+    connect(selectionModel, &QItemSelectionModel::currentRowChanged,
+            this, &TileStampsDock::currentRowChanged);
+    connect(mTileStampView, &QAbstractItemView::pressed,
+            this, &TileStampsDock::indexPressed);
 
     setWidget(widget);
     retranslateUi();
@@ -154,13 +158,18 @@ void TileStampsDock::keyPressEvent(QKeyEvent *event)
 {
     switch (event->key()) {
     case Qt::Key_Delete:
-    case Qt::Key_Backspace: {
+    case Qt::Key_Backspace:
         delete_();
         return;
     }
-    }
 
     QDockWidget::keyPressEvent(event);
+}
+
+void TileStampsDock::indexPressed(const QModelIndex &index)
+{
+    const QModelIndex sourceIndex = mProxyModel->mapToSource(index);
+    setStampAtIndex(sourceIndex);
 }
 
 void TileStampsDock::currentRowChanged(const QModelIndex &index)
@@ -172,12 +181,7 @@ void TileStampsDock::currentRowChanged(const QModelIndex &index)
     mDelete->setEnabled(sourceIndex.isValid());
     mAddVariation->setEnabled(isStamp);
 
-    if (isStamp) {
-        emit setStamp(mTileStampModel->stampAt(sourceIndex));
-    } else if (const TileStampVariation *variation = mTileStampModel->variationAt(sourceIndex)) {
-        // single variation clicked, use it specifically
-        emit setStamp(TileStamp(new Map(*variation->map)));
-    }
+    setStampAtIndex(sourceIndex);
 }
 
 void TileStampsDock::showContextMenu(QPoint pos)
@@ -195,20 +199,20 @@ void TileStampsDock::showContextMenu(QPoint pos)
         QAction *deleteStamp = new QAction(mDelete->icon(),
                                            tr("Delete Stamp"), &menu);
 
-        connect(deleteStamp, SIGNAL(triggered(bool)), SLOT(delete_()));
-        connect(addStampVariation, SIGNAL(triggered(bool)), SLOT(addVariation()));
+        connect(deleteStamp, &QAction::triggered, this, &TileStampsDock::delete_);
+        connect(addStampVariation, &QAction::triggered, this, &TileStampsDock::addVariation);
 
         menu.addAction(addStampVariation);
         menu.addSeparator();
         menu.addAction(deleteStamp);
     } else {
-        QAction *removeVariation = new QAction(QIcon(QLatin1String(":/images/16x16/remove.png")),
+        QAction *removeVariation = new QAction(QIcon(QLatin1String(":/images/16/remove.png")),
                                                tr("Remove Variation"),
                                                &menu);
 
         Utils::setThemeIcon(removeVariation, "remove");
 
-        connect(removeVariation, SIGNAL(triggered(bool)), SLOT(delete_()));
+        connect(removeVariation, &QAction::triggered, this, &TileStampsDock::delete_);
 
         menu.addAction(removeVariation);
     }
@@ -300,6 +304,18 @@ void TileStampsDock::retranslateUi()
     mFilterEdit->setPlaceholderText(tr("Filter"));
 }
 
+void TileStampsDock::setStampAtIndex(const QModelIndex &index)
+{
+    const bool isStamp = mTileStampModel->isStamp(index);
+
+    if (isStamp) {
+        emit setStamp(mTileStampModel->stampAt(index));
+    } else if (const TileStampVariation *variation = mTileStampModel->variationAt(index)) {
+        // single variation clicked, use it specifically
+        emit setStamp(TileStamp(variation->map->clone()));
+    }
+}
+
 
 TileStampView::TileStampView(QWidget *parent)
     : QTreeView(parent)
@@ -308,8 +324,21 @@ TileStampView::TileStampView(QWidget *parent)
 
 QSize TileStampView::sizeHint() const
 {
-    return QSize(130, 200);
+    return Utils::dpiScaled(QSize(200, 200));
 }
 
-} // namespace Internal
+bool TileStampView::event(QEvent *event)
+{
+    if (event->type() == QEvent::ShortcutOverride) {
+        if (static_cast<QKeyEvent *>(event)->key() == Qt::Key_Tab) {
+            if (indexWidget(currentIndex())) {
+                event->accept();
+                return true;
+            }
+        }
+    }
+
+    return QTreeView::event(event);
+}
+
 } // namespace Tiled

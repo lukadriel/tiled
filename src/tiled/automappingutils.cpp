@@ -30,15 +30,15 @@
 #include <QUndoStack>
 
 namespace Tiled {
-namespace Internal {
 
 void eraseRegionObjectGroup(MapDocument *mapDocument,
-                                        ObjectGroup *layer,
-                                        const QRegion &where)
+                            ObjectGroup *layer,
+                            const QRegion &where)
 {
     QUndoStack *undo = mapDocument->undoStack();
 
-    foreach (MapObject *obj, layer->objects()) {
+    const auto objects = layer->objects();
+    for (MapObject *obj : objects) {
         // TODO: we are checking bounds, which is only correct for rectangles and
         // tile objects. polygons and polylines are not covered correctly by this
         // erase method (we are in fact deleting too many objects)
@@ -59,14 +59,14 @@ void eraseRegionObjectGroup(MapDocument *mapDocument,
 
         const QRect objAlignedRect = objInTileSpace.toAlignedRect();
         if (where.intersects(objAlignedRect))
-            undo->push(new RemoveMapObject(mapDocument, obj));
+            undo->push(new RemoveMapObjects(mapDocument, obj));
     }
 }
 
-QRegion tileRegionOfObjectGroup(ObjectGroup *layer)
+QRegion tileRegionOfObjectGroup(const ObjectGroup *layer)
 {
     QRegion ret;
-    foreach (MapObject *obj, layer->objects()) {
+    for (MapObject *obj : layer->objects()) {
         // TODO: we are using bounds, which is only correct for rectangles and
         // tile objects. polygons and polylines are not probably covering less
         // tiles.
@@ -75,11 +75,11 @@ QRegion tileRegionOfObjectGroup(ObjectGroup *layer)
     return ret;
 }
 
-const QList<MapObject*> objectsInRegion(ObjectGroup *layer,
+const QList<MapObject*> objectsInRegion(const ObjectGroup *layer,
                                         const QRegion &where)
 {
     QList<MapObject*> ret;
-    foreach (MapObject *obj, layer->objects()) {
+    for (MapObject *obj : layer->objects()) {
         // TODO: we are checking bounds, which is only correct for rectangles and
         // tile objects. polygons and polylines are not covered correctly by this
         // erase method (we are in fact deleting too many objects)
@@ -95,5 +95,4 @@ const QList<MapObject*> objectsInRegion(ObjectGroup *layer,
     return ret;
 }
 
-}
-}
+} // namespace Tiled

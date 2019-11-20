@@ -21,19 +21,20 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#pragma once
 
-#include "mapdocument.h"
-#include "consoledock.h"
+#include "clipboardmanager.h"
+#include "document.h"
+#include "preferences.h"
+#include "preferencesdialog.h"
 
 #include <QMainWindow>
+#include <QPointer>
 #include <QSessionManager>
 #include <QSettings>
 
 class QComboBox;
 class QLabel;
-class QToolButton;
 
 namespace Ui {
 class MainWindow;
@@ -41,33 +42,23 @@ class MainWindow;
 
 namespace Tiled {
 
+class FileFormat;
 class TileLayer;
 class Terrain;
-class MapReaderInterface;
 
-namespace Internal {
-
+class ActionManager;
 class AutomappingManager;
-class BucketFillTool;
-class CommandButton;
+class ConsoleDock;
 class DocumentManager;
-class LayerDock;
+class IssuesDock;
+class MapDocument;
 class MapDocumentActionHandler;
+class MapEditor;
 class MapScene;
-class MapsDock;
 class MapView;
-class MiniMapDock;
-class ObjectsDock;
-class PropertiesDock;
-class StampBrush;
-class TerrainBrush;
-class TerrainDock;
-class TileAnimationEditor;
-class TileCollisionEditor;
-class TilesetDock;
-class TileStamp;
-class TileStampManager;
-class ToolManager;
+class ObjectTypesEditor;
+class TilesetDocument;
+class TilesetEditor;
 class Zoomable;
 
 /**
@@ -81,8 +72,8 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = 0, Qt::WindowFlags flags = 0);
-    ~MainWindow();
+    MainWindow(QWidget *parent = nullptr, Qt::WindowFlags flags = 0);
+    ~MainWindow() override;
 
     void commitData(QSessionManager &manager);
 
@@ -90,38 +81,40 @@ public:
      * Opens the given file. When opened successfully, the file is added to the
      * list of recent files.
      *
-     * When a \a reader is given, it is used to open the file. Otherwise, a
-     * reader is searched using MapReaderInterface::supportsFile.
+     * When a \a format is given, it is used to open the file. Otherwise, a
+     * format is searched using MapFormat::supportsFile.
      *
      * @return whether the file was successfully opened
      */
-    bool openFile(const QString &fileName, MapReaderInterface *reader);
+    bool openFile(const QString &fileName, FileFormat *fileFormat = nullptr);
 
     /**
      * Attempt to open the previously opened file.
      */
     void openLastFiles();
 
-public slots:
-    bool openFile(const QString &fileName);
+    static MainWindow *instance();
 
 protected:
-    void closeEvent(QCloseEvent *event);
-    void changeEvent(QEvent *event);
+    bool event(QEvent *event) override;
 
-    void keyPressEvent(QKeyEvent *);
-    void keyReleaseEvent(QKeyEvent *);
+    void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
-    void dragEnterEvent(QDragEnterEvent *);
-    void dropEvent(QDropEvent *);
+    void keyPressEvent(QKeyEvent *) override;
+    void keyReleaseEvent(QKeyEvent *) override;
 
-public slots:
+    void dragEnterEvent(QDragEnterEvent *) override;
+    void dropEvent(QDropEvent *) override;
+
+private:
     void newMap();
-    void openFile();
+    void openFileDialog();
     bool saveFile();
     bool saveFileAs();
     void saveAll();
     void export_(); // 'export' is a reserved word
+    bool exportDocument(Document *document);
     void exportAs();
     void exportAsImage();
     void reload();
@@ -131,52 +124,50 @@ public slots:
     void cut();
     void copy();
     void paste();
-    void delete_(); // 'delete' is a reserved word
+    void pasteInPlace();
+    void delete_();
     void openPreferences();
 
+    void labelVisibilityActionTriggered(QAction *action);
     void zoomIn();
     void zoomOut();
     void zoomNormal();
+    void fitInView();
+    void setFullScreen(bool fullScreen);
+    void toggleClearView(bool clearView);
+    void resetToDefaultLayout();
 
     bool newTileset(const QString &path = QString());
-    void newTilesets(const QStringList &paths);
-    void reloadTilesets();
+    void reloadTilesetImages();
     void addExternalTileset();
     void resizeMap();
     void offsetMap();
     void editMapProperties();
 
+    void editTilesetProperties();
+
     void updateWindowTitle();
     void updateActions();
-    void updateZoomLabel();
-    void becomePatron();
+    void updateZoomable();
+    void updateZoomActions();
+    void openDocumentation();
+    void openForum();
+    void showDonationDialog();
     void aboutTiled();
     void openRecentFile();
-    void clearRecentFiles();
 
-    void flipHorizontally() { flip(FlipHorizontally); }
-    void flipVertically() { flip(FlipVertically); }
-    void rotateLeft() { rotate(RotateLeft); }
-    void rotateRight() { rotate(RotateRight); }
-
-    void flip(FlipDirection direction);
-    void rotate(RotateDirection direction);
-
-    void setStamp(const TileStamp &stamp);
-    void setTerrainBrush(const Terrain *terrain);
-    void updateStatusInfoLabel(const QString &statusInfo);
-
-    void mapDocumentChanged(MapDocument *mapDocument);
-    void closeMapDocument(int index);
+    void documentChanged(Document *document);
+    void documentSaved(Document *document);
+    void closeDocument(int index);
 
     void reloadError(const QString &error);
     void autoMappingError(bool automatic);
     void autoMappingWarning(bool automatic);
 
-    void onAnimationEditorClosed();
-    void onCollisionEditorClosed();
+    void onObjectTypesEditorClosed();
 
-private:
+    void ensureHasBorderInFullScreen();
+
     /**
       * Asks the user whether the given \a mapDocument should be saved, when
       * necessary. If it needs to ask, also makes sure that it is the current
@@ -186,7 +177,7 @@ private:
       *         saved, <code>false</code> when the user cancelled or saving
       *         failed.
       */
-    bool confirmSave(MapDocument *mapDocument);
+    bool confirmSave(Document *document);
 
     /**
       * Checks all maps for changes, if so, ask if to save these changes.
@@ -197,65 +188,56 @@ private:
       */
     bool confirmAllSave();
 
-    /**
-     * Save the current map to the given file name. When saved successfully, the
-     * file is added to the list of recent files.
-     * @return <code>true</code> on success, <code>false</code> on failure
-     */
-    bool saveFile(const QString &fileName);
-
     void writeSettings();
     void readSettings();
 
-    QStringList recentFiles() const;
-    QString fileDialogStartLocation() const;
-
-    void setRecentFile(const QString &fileName);
-    void updateRecentFiles();
+    void updateRecentFilesMenu();
+    void updateViewsAndToolbarsMenu();
 
     void retranslateUi();
 
+    void exportMapAs(MapDocument *mapDocument);
+    void exportTilesetAs(TilesetDocument *tilesetDocument);
+
+    ActionManager *mActionManager;
     Ui::MainWindow *mUi;
-    MapDocument *mMapDocument;
+    Document *mDocument = nullptr;
+    Zoomable *mZoomable = nullptr;
     MapDocumentActionHandler *mActionHandler;
-    LayerDock *mLayerDock;
-    MapsDock *mMapsDock;
-    ObjectsDock *mObjectsDock;
-    TilesetDock *mTilesetDock;
-    TerrainDock *mTerrainDock;
-    MiniMapDock* mMiniMapDock;
     ConsoleDock *mConsoleDock;
-    TileAnimationEditor *mTileAnimationEditor;
-    TileCollisionEditor *mTileCollisionEditor;
-    QLabel *mCurrentLayerLabel;
-    Zoomable *mZoomable;
-    QComboBox *mZoomComboBox;
-    QLabel *mStatusInfoLabel;
+    IssuesDock *mIssuesDock;
+    ObjectTypesEditor *mObjectTypesEditor;
     QSettings mSettings;
-    QToolButton *mRandomButton;
-    CommandButton *mCommandButton;
 
-    StampBrush *mStampBrush;
-    BucketFillTool *mBucketFillTool;
-    TerrainBrush *mTerrainBrush;
-
-    enum { MaxRecentFiles = 8 };
-    QAction *mRecentFiles[MaxRecentFiles];
+    QAction *mRecentFiles[Preferences::MaxRecentFiles];
 
     QMenu *mLayerMenu;
-    QAction *mViewsAndToolbarsMenu;
-    QAction *mShowTileAnimationEditor;
-    QAction *mShowTileCollisionEditor;
+    QMenu *mNewLayerMenu;
+    QMenu *mGroupLayerMenu;
+    QMenu *mViewsAndToolbarsMenu;
+    QAction *mViewsAndToolbarsAction;
+    QAction *mShowObjectTypesEditor;
+
+    QAction *mResetToDefaultLayout;
 
     void setupQuickStamps();
 
     AutomappingManager *mAutomappingManager;
     DocumentManager *mDocumentManager;
-    ToolManager *mToolManager;
-    TileStampManager *mTileStampManager;
+    MapEditor *mMapEditor;
+    TilesetEditor *mTilesetEditor;
+
+    QPointer<PreferencesDialog> mPreferencesDialog;
+
+    QMap<QMainWindow*, QByteArray> mMainWindowStates;
+
+    static MainWindow *mInstance;
 };
 
-} // namespace Internal
-} // namespace Tiled
+inline MainWindow *MainWindow::instance()
+{
+    Q_ASSERT(mInstance);
+    return mInstance;
+}
 
-#endif // MAINWINDOW_H
+} // namespace Tiled

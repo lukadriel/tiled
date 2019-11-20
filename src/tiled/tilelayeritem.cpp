@@ -20,37 +20,40 @@
 
 #include "tilelayeritem.h"
 
-#include "tile.h"
-#include "tilelayer.h"
 #include "map.h"
 #include "mapdocument.h"
 #include "maprenderer.h"
+#include "mapview.h"
+#include "tile.h"
+#include "zoomable.h"
 
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-TileLayerItem::TileLayerItem(TileLayer *layer, MapDocument *mapDocument)
-    : mLayer(layer)
+TileLayerItem::TileLayerItem(TileLayer *layer, MapDocument *mapDocument, QGraphicsItem *parent)
+    : LayerItem(layer, parent)
     , mMapDocument(mapDocument)
 {
     setFlag(QGraphicsItem::ItemUsesExtendedStyleOption);
 
     syncWithTileLayer();
-    setOpacity(mLayer->opacity());
 }
 
 void TileLayerItem::syncWithTileLayer()
 {
     prepareGeometryChange();
 
-    MapRenderer *renderer = mMapDocument->renderer();
-    QRectF boundingRect = renderer->boundingRect(mLayer->bounds());
+    QRect layerBounds = tileLayer()->bounds();
+    if (!mMapDocument->map()->infinite())
+        layerBounds &= tileLayer()->rect();
 
-    QMargins margins = mLayer->drawMargins();
-    if (const Map *map = mLayer->map()) {
+    const MapRenderer *renderer = mMapDocument->renderer();
+    QRectF boundingRect = renderer->boundingRect(layerBounds);
+
+    QMargins margins = tileLayer()->drawMargins();
+    if (const Map *map = tileLayer()->map()) {
         margins.setTop(margins.top() - map->tileHeight());
         margins.setRight(margins.right() - map->tileWidth());
     }
@@ -68,9 +71,12 @@ QRectF TileLayerItem::boundingRect() const
 
 void TileLayerItem::paint(QPainter *painter,
                           const QStyleOptionGraphicsItem *option,
-                          QWidget *)
+                          QWidget *widget)
 {
+    const qreal scale = static_cast<MapView*>(widget->parent())->zoomable()->scale();
+
     MapRenderer *renderer = mMapDocument->renderer();
+    renderer->setPainterScale(scale);
     // TODO: Display a border around the layer when selected
-    renderer->drawTileLayer(painter, mLayer, option->exposedRect);
+    renderer->drawTileLayer(painter, tileLayer(), option->exposedRect);
 }

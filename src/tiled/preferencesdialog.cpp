@@ -22,153 +22,126 @@
 #include "ui_preferencesdialog.h"
 
 #include "languagemanager.h"
-#include "objecttypesmodel.h"
+#include "pluginlistmodel.h"
 #include "preferences.h"
-#include "utils.h"
+#include "scriptmanager.h"
 
-#include <QColorDialog>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QPainter>
-#include <QStyledItemDelegate>
+#include <QDesktopServices>
+#include <QSortFilterProxyModel>
 
-#ifndef QT_NO_OPENGL
-#include <QGLFormat>
-#endif
+#include "qtcompat_p.h"
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-namespace Tiled {
-namespace Internal {
-
-class ColorDelegate : public QStyledItemDelegate
-{
-public:
-    ColorDelegate(QObject *parent = 0)
-        : QStyledItemDelegate(parent)
-    { }
-
-    void paint(QPainter *painter, const QStyleOptionViewItem &option,
-               const QModelIndex &index) const;
-
-    QSize sizeHint(const QStyleOptionViewItem &,
-                   const QModelIndex &) const;
-};
-
-} // namespace Internal
-} // namespace Tiled
-
-
-void ColorDelegate::paint(QPainter *painter,
-                          const QStyleOptionViewItem &option,
-                          const QModelIndex &index) const
-{
-    QStyledItemDelegate::paint(painter, option, index);
-
-    const QVariant displayData =
-            index.model()->data(index, ObjectTypesModel::ColorRole);
-    const QColor color = displayData.value<QColor>();
-    const QRect rect = option.rect.adjusted(4, 4, -4, -4);
-
-    const QPen linePen(color, 2);
-    const QPen shadowPen(Qt::black, 2);
-
-    QColor brushColor = color;
-    brushColor.setAlpha(50);
-    const QBrush fillBrush(brushColor);
-
-    // Draw the shadow
-    painter->setPen(shadowPen);
-    painter->setBrush(QBrush());
-    painter->drawRect(rect.translated(QPoint(1, 1)));
-
-    painter->setPen(linePen);
-    painter->setBrush(fillBrush);
-    painter->drawRect(rect);
-}
-
-QSize ColorDelegate::sizeHint(const QStyleOptionViewItem &,
-                              const QModelIndex &) const
-{
-    return QSize(50, 20);
-}
-
-
-PreferencesDialog::PreferencesDialog(QWidget *parent) :
-    QDialog(parent),
-    mUi(new Ui::PreferencesDialog),
-    mLanguages(LanguageManager::instance()->availableLanguages())
+PreferencesDialog::PreferencesDialog(QWidget *parent)
+    : QDialog(parent)
+    , mUi(new ::Ui::PreferencesDialog)
+    , mLanguages(LanguageManager::instance()->availableLanguages())
 {
     mUi->setupUi(this);
+#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-
-#ifndef QT_NO_OPENGL
-    mUi->openGL->setEnabled(QGLFormat::hasOpenGL());
-#else
-    mUi->openGL->setEnabled(false);
 #endif
 
-    foreach (const QString &name, mLanguages) {
+#if defined(QT_NO_OPENGL)
+    mUi->openGL->setEnabled(false);
+#else
+    mUi->openGL->setEnabled(true);
+#endif
+
+    for (const QString &name : qAsConst(mLanguages)) {
         QLocale locale(name);
         QString string = QString(QLatin1String("%1 (%2)"))
-            .arg(QLocale::languageToString(locale.language()))
-            .arg(QLocale::countryToString(locale.country()));
+            .arg(QLocale::languageToString(locale.language()),
+                 QLocale::countryToString(locale.country()));
         mUi->languageCombo->addItem(string, name);
     }
 
     mUi->languageCombo->model()->sort(0);
     mUi->languageCombo->insertItem(0, tr("System default"));
 
-    mObjectTypesModel = new ObjectTypesModel(this);
-    mUi->objectTypesTable->setModel(mObjectTypesModel);
-    mUi->objectTypesTable->setItemDelegateForColumn(1, new ColorDelegate(this));
+    mUi->styleCombo->addItems(QStringList()
+                              << QApplication::translate("PreferencesDialog", "Native")
+                              << QApplication::translate("PreferencesDialog", "Tiled Fusion"));
 
-    QHeaderView *horizontalHeader = mUi->objectTypesTable->horizontalHeader();
-    horizontalHeader->setSectionResizeMode(QHeaderView::Stretch);
+    mUi->styleCombo->setItemData(0, Preferences::SystemDefaultStyle);
+    mUi->styleCombo->setItemData(1, Preferences::TiledStyle);
 
-    Utils::setThemeIcon(mUi->addObjectTypeButton, "add");
-    Utils::setThemeIcon(mUi->removeObjectTypeButton, "remove");
+    PluginListModel *pluginListModel = new PluginListModel(this);
+    QSortFilterProxyModel *pluginProxyModel = new QSortFilterProxyModel(this);
+    pluginProxyModel->setSortLocaleAware(true);
+    pluginProxyModel->setSortCaseSensitivity(Qt::CaseInsensitive);
+    pluginProxyModel->setSourceModel(pluginListModel);
+    pluginProxyModel->sort(0);
+
+    mUi->pluginList->setModel(pluginProxyModel);
 
     fromPreferences();
 
-    connect(mUi->languageCombo, SIGNAL(currentIndexChanged(int)),
-            SLOT(languageSelected(int)));
-    connect(mUi->openGL, SIGNAL(toggled(bool)), SLOT(useOpenGLToggled(bool)));
-    connect(mUi->gridColor, SIGNAL(colorChanged(QColor)),
-            Preferences::instance(), SLOT(setGridColor(QColor)));
-    connect(mUi->gridFine, SIGNAL(valueChanged(int)),
-            Preferences::instance(), SLOT(setGridFine(int)));
-    connect(mUi->objectLineWidth, SIGNAL(valueChanged(double)),
-            SLOT(objectLineWidthChanged(double)));
+    auto *preferences = Preferences::instance();
 
-    connect(mUi->objectTypesTable->selectionModel(),
-            SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-            SLOT(selectedObjectTypesChanged()));
-    connect(mUi->objectTypesTable, SIGNAL(doubleClicked(QModelIndex)),
-            SLOT(objectTypeIndexClicked(QModelIndex)));
-    connect(mUi->addObjectTypeButton, SIGNAL(clicked()),
-            SLOT(addObjectType()));
-    connect(mUi->removeObjectTypeButton, SIGNAL(clicked()),
-            SLOT(removeSelectedObjectTypes()));
-    connect(mUi->importObjectTypesButton, SIGNAL(clicked()),
-            SLOT(importObjectTypes()));
-    connect(mUi->exportObjectTypesButton, SIGNAL(clicked()),
-            SLOT(exportObjectTypes()));
+    connect(mUi->reloadTilesetImages, &QCheckBox::toggled,
+            preferences, &Preferences::setReloadTilesetsOnChanged);
+    connect(mUi->openLastFiles, &QCheckBox::toggled,
+            preferences, &Preferences::setOpenLastFilesOnStartup);
+    connect(mUi->safeSaving, &QCheckBox::toggled,
+            preferences, &Preferences::setSafeSavingEnabled);
+    connect(mUi->exportOnSave, &QCheckBox::toggled,
+            preferences, &Preferences::setExportOnSave);
 
-    connect(mObjectTypesModel, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-            SLOT(applyObjectTypes()));
-    connect(mObjectTypesModel, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-            SLOT(applyObjectTypes()));
+    connect(mUi->embedTilesets, &QCheckBox::toggled, preferences, [preferences] (bool value) {
+        preferences->setExportOption(Preferences::EmbedTilesets, value);
+    });
+    connect(mUi->detachTemplateInstances, &QCheckBox::toggled, preferences, [preferences] (bool value) {
+        preferences->setExportOption(Preferences::DetachTemplateInstances, value);
+    });
+    connect(mUi->resolveObjectTypesAndProperties, &QCheckBox::toggled, preferences, [preferences] (bool value) {
+        preferences->setExportOption(Preferences::ResolveObjectTypesAndProperties, value);
+    });
+    connect(mUi->minimizeOutput, &QCheckBox::toggled, preferences, [preferences] (bool value) {
+        preferences->setExportOption(Preferences::ExportMinimized, value);
+    });
 
-    connect(mUi->autoMapWhileDrawing, SIGNAL(toggled(bool)),
-            SLOT(useAutomappingDrawingToggled(bool)));
-    connect(mUi->openLastFiles, SIGNAL(toggled(bool)), SLOT(openLastFilesToggled(bool)));
+    connect(mUi->languageCombo, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+            this, &PreferencesDialog::languageSelected);
+    connect(mUi->gridColor, &ColorButton::colorChanged,
+            preferences, &Preferences::setGridColor);
+    connect(mUi->gridFine, static_cast<void(QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+            preferences, &Preferences::setGridFine);
+    connect(mUi->objectLineWidth, static_cast<void(QDoubleSpinBox::*)(double)>(&QDoubleSpinBox::valueChanged),
+            preferences, &Preferences::setObjectLineWidth);
+    connect(mUi->openGL, &QCheckBox::toggled,
+            preferences, &Preferences::setUseOpenGL);
+    connect(mUi->wheelZoomsByDefault, &QCheckBox::toggled,
+            preferences, &Preferences::setWheelZoomsByDefault);
+
+    connect(mUi->styleCombo, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+            this, &PreferencesDialog::styleComboChanged);
+    connect(mUi->baseColor, &ColorButton::colorChanged,
+            preferences, &Preferences::setBaseColor);
+    connect(mUi->selectionColor, &ColorButton::colorChanged,
+            preferences, &Preferences::setSelectionColor);
+
+    connect(mUi->displayNewsCheckBox, &QCheckBox::toggled,
+            preferences, &Preferences::setDisplayNews);
+    connect(mUi->displayNewVersionCheckBox, &QCheckBox::toggled,
+            preferences, &Preferences::setCheckForUpdates);
+
+    connect(pluginListModel, &PluginListModel::setPluginEnabled,
+            preferences, &Preferences::setPluginEnabled);
+
+    const QString &extensionsPath = ScriptManager::instance().extensionsPath();
+    mUi->extensionsPathEdit->setText(extensionsPath);
+    mUi->openExtensionsPathButton->setEnabled(!extensionsPath.isEmpty());
+    connect(mUi->openExtensionsPathButton, &QPushButton::clicked, this, [&] {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(extensionsPath));
+    });
+
+    resize(sizeHint());
 }
 
 PreferencesDialog::~PreferencesDialog()
 {
-    toPreferences();
     delete mUi;
 }
 
@@ -178,7 +151,7 @@ void PreferencesDialog::changeEvent(QEvent *e)
     switch (e->type()) {
     case QEvent::LanguageChange: {
             mUi->retranslateUi(this);
-            mUi->languageCombo->setItemText(0, tr("System default"));
+            retranslateUi();
         }
         break;
     default:
@@ -193,117 +166,25 @@ void PreferencesDialog::languageSelected(int index)
     prefs->setLanguage(language);
 }
 
-void PreferencesDialog::objectLineWidthChanged(double lineWidth)
-{
-    Preferences::instance()->setObjectLineWidth(lineWidth);
-}
-
-void PreferencesDialog::useOpenGLToggled(bool useOpenGL)
-{
-    Preferences::instance()->setUseOpenGL(useOpenGL);
-}
-
-void PreferencesDialog::addObjectType()
-{
-    const int newRow = mObjectTypesModel->objectTypes().size();
-    mObjectTypesModel->appendNewObjectType();
-
-    // Select and focus the new row and ensure it is visible
-    QItemSelectionModel *sm = mUi->objectTypesTable->selectionModel();
-    const QModelIndex newIndex = mObjectTypesModel->index(newRow, 0);
-    sm->select(newIndex,
-               QItemSelectionModel::ClearAndSelect |
-               QItemSelectionModel::Rows);
-    sm->setCurrentIndex(newIndex, QItemSelectionModel::Current);
-    mUi->objectTypesTable->setFocus();
-    mUi->objectTypesTable->scrollTo(newIndex);
-}
-
-void PreferencesDialog::selectedObjectTypesChanged()
-{
-    const QItemSelectionModel *sm = mUi->objectTypesTable->selectionModel();
-    mUi->removeObjectTypeButton->setEnabled(sm->hasSelection());
-}
-
-void PreferencesDialog::removeSelectedObjectTypes()
-{
-    const QItemSelectionModel *sm = mUi->objectTypesTable->selectionModel();
-    mObjectTypesModel->removeObjectTypes(sm->selectedRows());
-}
-
-void PreferencesDialog::objectTypeIndexClicked(const QModelIndex &index)
-{
-    if (index.column() == 1) {
-        QColor color = mObjectTypesModel->objectTypes().at(index.row()).color;
-        QColor newColor = QColorDialog::getColor(color, this);
-        if (newColor.isValid())
-            mObjectTypesModel->setObjectTypeColor(index.row(), newColor);
-    }
-}
-
-void PreferencesDialog::applyObjectTypes()
-{
-    Preferences *prefs = Preferences::instance();
-    prefs->setObjectTypes(mObjectTypesModel->objectTypes());
-}
-
-void PreferencesDialog::importObjectTypes()
-{
-    Preferences *prefs = Preferences::instance();
-    const QString lastPath = prefs->lastPath(Preferences::ObjectTypesFile);
-    const QString fileName =
-            QFileDialog::getOpenFileName(this, tr("Import Object Types"),
-                                         lastPath,
-                                         tr("Object Types files (*.xml)"));
-    if (fileName.isEmpty())
-        return;
-
-    prefs->setLastPath(Preferences::ObjectTypesFile, fileName);
-
-    ObjectTypesReader reader;
-    ObjectTypes objectTypes = reader.readObjectTypes(fileName);
-
-    if (reader.errorString().isEmpty()) {
-        prefs->setObjectTypes(objectTypes);
-        mObjectTypesModel->setObjectTypes(objectTypes);
-    } else {
-        QMessageBox::critical(this, tr("Error Reading Object Types"),
-                              reader.errorString());
-    }
-}
-
-void PreferencesDialog::exportObjectTypes()
-{
-    Preferences *prefs = Preferences::instance();
-    QString lastPath = prefs->lastPath(Preferences::ObjectTypesFile);
-
-    if (!lastPath.endsWith(QLatin1String(".xml")))
-        lastPath.append(QLatin1String("/objecttypes.xml"));
-
-    const QString fileName =
-            QFileDialog::getSaveFileName(this, tr("Export Object Types"),
-                                         lastPath,
-                                         tr("Object Types files (*.xml)"));
-    if (fileName.isEmpty())
-        return;
-
-    prefs->setLastPath(Preferences::ObjectTypesFile, fileName);
-
-    ObjectTypesWriter writer;
-    if (!writer.writeObjectTypes(fileName, prefs->objectTypes())) {
-        QMessageBox::critical(this, tr("Error Writing Object Types"),
-                              writer.errorString());
-    }
-}
-
 void PreferencesDialog::fromPreferences()
 {
     const Preferences *prefs = Preferences::instance();
+
+    // General
     mUi->reloadTilesetImages->setChecked(prefs->reloadTilesetsOnChange());
-    mUi->enableDtd->setChecked(prefs->dtdEnabled());
     mUi->openLastFiles->setChecked(prefs->openLastFilesOnStartup());
+    mUi->safeSaving->setChecked(prefs->safeSavingEnabled());
+    mUi->exportOnSave->setChecked(prefs->exportOnSave());
+
+    mUi->embedTilesets->setChecked(prefs->exportOption(Preferences::EmbedTilesets));
+    mUi->detachTemplateInstances->setChecked(prefs->exportOption(Preferences::DetachTemplateInstances));
+    mUi->resolveObjectTypesAndProperties->setChecked(prefs->exportOption(Preferences::ResolveObjectTypesAndProperties));
+    mUi->minimizeOutput->setChecked(prefs->exportOption(Preferences::ExportMinimized));
+
+    // Interface
     if (mUi->openGL->isEnabled())
         mUi->openGL->setChecked(prefs->useOpenGL());
+    mUi->wheelZoomsByDefault->setChecked(prefs->wheelZoomsByDefault());
 
     // Not found (-1) ends up at index 0, system default
     int languageIndex = mUi->languageCombo->findData(prefs->language());
@@ -313,26 +194,44 @@ void PreferencesDialog::fromPreferences()
     mUi->gridColor->setColor(prefs->gridColor());
     mUi->gridFine->setValue(prefs->gridFine());
     mUi->objectLineWidth->setValue(prefs->objectLineWidth());
-    mUi->autoMapWhileDrawing->setChecked(prefs->automappingDrawing());
-    mObjectTypesModel->setObjectTypes(prefs->objectTypes());
+
+    // Updates
+    mUi->displayNewsCheckBox->setChecked(prefs->displayNews());
+    mUi->displayNewVersionCheckBox->setChecked(prefs->checkForUpdates());
+
+    // Theme
+    int styleComboIndex = mUi->styleCombo->findData(prefs->applicationStyle());
+    if (styleComboIndex == -1)
+        styleComboIndex = 1;
+
+    mUi->styleCombo->setCurrentIndex(styleComboIndex);
+    mUi->baseColor->setColor(prefs->baseColor());
+    mUi->selectionColor->setColor(prefs->selectionColor());
+    bool systemStyle = prefs->applicationStyle() == Preferences::SystemDefaultStyle;
+    mUi->baseColor->setEnabled(!systemStyle);
+    mUi->baseColorLabel->setEnabled(!systemStyle);
+    mUi->selectionColor->setEnabled(!systemStyle);
+    mUi->selectionColorLabel->setEnabled(!systemStyle);
 }
 
-void PreferencesDialog::toPreferences()
+void PreferencesDialog::retranslateUi()
+{
+    mUi->languageCombo->setItemText(0, tr("System default"));
+
+    mUi->styleCombo->setItemText(0, QApplication::translate("PreferencesDialog", "Native"));
+    mUi->styleCombo->setItemText(1, QApplication::translate("PreferencesDialog", "Tiled Fusion"));
+}
+
+void PreferencesDialog::styleComboChanged()
 {
     Preferences *prefs = Preferences::instance();
+    int style = mUi->styleCombo->currentData().toInt();
 
-    prefs->setReloadTilesetsOnChanged(mUi->reloadTilesetImages->isChecked());
-    prefs->setDtdEnabled(mUi->enableDtd->isChecked());
-    prefs->setAutomappingDrawing(mUi->autoMapWhileDrawing->isChecked());
-    prefs->setOpenLastFilesOnStartup(mUi->openLastFiles->isChecked());
-}
+    prefs->setApplicationStyle(static_cast<Preferences::ApplicationStyle>(style));
 
-void PreferencesDialog::useAutomappingDrawingToggled(bool enabled)
-{
-    Preferences::instance()->setAutomappingDrawing(enabled);
-}
-
-void PreferencesDialog::openLastFilesToggled(bool enabled)
-{
-    Preferences::instance()->setOpenLastFilesOnStartup(enabled);
+    bool systemStyle = prefs->applicationStyle() == Preferences::SystemDefaultStyle;
+    mUi->baseColor->setEnabled(!systemStyle);
+    mUi->baseColorLabel->setEnabled(!systemStyle);
+    mUi->selectionColor->setEnabled(!systemStyle);
+    mUi->selectionColorLabel->setEnabled(!systemStyle);
 }

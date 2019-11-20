@@ -26,8 +26,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef STAGGEREDRENDERER_H
-#define STAGGEREDRENDERER_H
+#pragma once
 
 #include "hexagonalrenderer.h"
 
@@ -73,15 +72,13 @@ namespace Tiled {
  *     Similar problem as with stamps when offsetting at an uneven y offset.
  *
  */
-class TILEDSHARED_EXPORT StaggeredRenderer : public HexagonalRenderer
+class TILEDSHARED_EXPORT StaggeredRenderer final : public HexagonalRenderer
 {
 public:
     StaggeredRenderer(const Map *map) : HexagonalRenderer(map) {}
 
     using HexagonalRenderer::screenToTileCoords;
-    QPointF screenToTileCoords(qreal x, qreal y) const;
+    QPointF screenToTileCoords(qreal x, qreal y) const override;
 };
 
 } // namespace Tiled
-
-#endif // STAGGEREDRENDERER_H

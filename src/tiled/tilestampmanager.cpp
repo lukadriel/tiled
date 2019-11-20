@@ -27,6 +27,7 @@
 #include "mapdocument.h"
 #include "map.h"
 #include "preferences.h"
+#include "savefile.h"
 #include "stampbrush.h"
 #include "tilelayer.h"
 #include "tileselectiontool.h"
@@ -39,10 +40,10 @@
 #include <QDirIterator>
 #include <QJsonDocument>
 #include <QRegularExpression>
-#include <QSaveFile>
+
+#include <memory>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 static QString stampFilePath(const QString &name)
 {
@@ -105,42 +106,40 @@ static TileStamp stampFromContext(AbstractTool *selectedTool)
 {
     TileStamp stamp;
 
-    if (StampBrush *stampBrush = dynamic_cast<StampBrush*>(selectedTool)) {
+    if (auto stampBrush = dynamic_cast<StampBrush*>(selectedTool)) {
         // take the stamp from the stamp brush
         stamp = stampBrush->stamp();
-    } else if (BucketFillTool *fillTool = dynamic_cast<BucketFillTool*>(selectedTool)) {
+    } else if (auto fillTool = dynamic_cast<AbstractTileFillTool*>(selectedTool)) {
         // take the stamp from the fill tool
         stamp = fillTool->stamp();
-    } else if (MapDocument *mapDocument = DocumentManager::instance()->currentDocument()) {
+    } else if (auto mapDocument = qobject_cast<MapDocument*>(DocumentManager::instance()->currentDocument())) {
         // try making a stamp from the current tile selection
-        const TileLayer *tileLayer =
-                dynamic_cast<TileLayer*>(mapDocument->currentLayer());
+        const auto tileLayer = dynamic_cast<TileLayer*>(mapDocument->currentLayer());
         if (!tileLayer)
             return stamp;
 
-        QRegion selection = mapDocument->selectedArea();
+        QRegion selection = mapDocument->selectedArea().intersected(tileLayer->bounds());
         if (selection.isEmpty())
             return stamp;
 
         selection.translate(-tileLayer->position());
-        QScopedPointer<TileLayer> copy(tileLayer->copy(selection));
+        auto copy = tileLayer->copy(selection);
 
-        if (copy->size().isEmpty())
+        if (copy->isEmpty())
             return stamp;
 
         const Map *map = mapDocument->map();
-        Map *copyMap = new Map(map->orientation(),
-                               copy->width(), copy->height(),
-                               map->tileWidth(), map->tileHeight());
+        std::unique_ptr<Map> copyMap { new Map(map->orientation(),
+                                               copy->width(), copy->height(),
+                                               map->tileWidth(), map->tileHeight()) };
 
         // Add tileset references to map
-        foreach (const SharedTileset &tileset, copy->usedTilesets())
-            copyMap->addTileset(tileset);
+        copyMap->addTilesets(copy->usedTilesets());
 
         copyMap->setRenderOrder(map->renderOrder());
-        copyMap->addLayer(copy.take());
+        copyMap->addLayer(std::move(copy));
 
-        stamp.addVariation(copyMap);
+        stamp.addVariation(std::move(copyMap));
     }
 
     return stamp;
@@ -165,7 +164,7 @@ void TileStampManager::addVariation(const TileStamp &targetStamp)
     if (stamp == targetStamp) // avoid easy mistake of adding duplicates
         return;
 
-    foreach (const TileStampVariation &variation, stamp.variations())
+    for (const TileStampVariation &variation : stamp.variations())
         mTileStampModel->addVariation(targetStamp, variation);
 }
 
@@ -252,7 +251,7 @@ void TileStampManager::loadStamps()
             QJsonParseError error;
             document = QJsonDocument::fromJson(data, &error);
             if (error.error != QJsonParseError::NoError) {
-                qDebug() << "Failed to parse stamp file:" << qPrintable(error.errorString());
+                qDebug().noquote() << "Failed to parse stamp file:" << error.errorString();
                 continue;
             }
         }
@@ -325,11 +324,14 @@ void TileStampManager::saveStamp(const TileStamp &stamp)
     }
 
     QString filePath = stampsDir.filePath(stamp.fileName());
+    SaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qDebug() << "Failed to open stamp file for writing" << filePath;
+        return;
+    }
 
     QJsonObject stampJson = stamp.toJson(QFileInfo(filePath).dir());
-    QSaveFile file(filePath);
-    file.open(QIODevice::WriteOnly);
-    file.write(QJsonDocument(stampJson).toJson(QJsonDocument::Compact));
+    file.device()->write(QJsonDocument(stampJson).toJson(QJsonDocument::Compact));
 
     if (!file.commit())
         qDebug() << "Failed to write stamp" << filePath;

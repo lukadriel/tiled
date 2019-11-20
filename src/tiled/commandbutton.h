@@ -18,15 +18,13 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef COMMANDBUTTON_H
-#define COMMANDBUTTON_H
+#pragma once
 
 #include <QToolButton>
 
 class QMenu;
 
 namespace Tiled {
-namespace Internal {
 
 class MainWindow;
 class DocumentManager;
@@ -39,20 +37,15 @@ public:
     CommandButton(QWidget *parent);
 
 protected:
-    void changeEvent(QEvent *event);
-
-private slots:
-    void runCommand();
-    void showDialog();
-    void populateMenu();
+    void changeEvent(QEvent *event) override;
 
 private:
+    void runCommand();
+    void showDialog();
+
     void retranslateUi();
 
     QMenu *mMenu;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // PREFERENCESDIALOG_H

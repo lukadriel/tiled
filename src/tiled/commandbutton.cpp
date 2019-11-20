@@ -21,29 +21,31 @@
 #include "commandbutton.h"
 #include "commanddatamodel.h"
 #include "commanddialog.h"
+#include "commandmanager.h"
 #include "utils.h"
 
 #include <QEvent>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPushButton>
 
 using namespace Tiled;
 using namespace Tiled::Utils;
-using namespace Tiled::Internal;
 
 CommandButton::CommandButton(QWidget *parent)
     : QToolButton(parent)
     , mMenu(new QMenu(this))
 {
-    setIcon(QIcon(QLatin1String(":images/24x24/system-run.png")));
+    setIcon(QIcon(QLatin1String(":images/24/system-run.png")));
     setThemeIcon(this, "system-run");
     retranslateUi();
 
     setPopupMode(QToolButton::MenuButtonPopup);
     setMenu(mMenu);
 
-    connect(mMenu, SIGNAL(aboutToShow()), SLOT(populateMenu()));
-    connect(this, SIGNAL(clicked()), SLOT(runCommand()));
+    CommandManager::instance()->registerMenu(mMenu);
+
+    connect(this, &QAbstractButton::clicked, this, &CommandButton::runCommand);
 }
 
 void CommandButton::runCommand()
@@ -52,24 +54,23 @@ void CommandButton::runCommand()
 
     QAction *action = dynamic_cast<QAction*>(sender());
     if (action && action->data().isValid()) {
-        //run the command passed by the action
+        // run the command passed by the action
         command = Command::fromQVariant(action->data());
     } else {
-        //run the default command
-        command = CommandDataModel().firstEnabledCommand();
-
-        if (!command.isEnabled) {
+        // run the default command
+        if (auto c = CommandManager::instance()->commandDataModel()->firstEnabledCommand()) {
+            command = *c;
+        } else {
             QMessageBox msgBox(window());
             msgBox.setIcon(QMessageBox::Warning);
             msgBox.setWindowTitle(tr("Error Executing Command"));
             msgBox.setText(tr("You do not have any commands setup."));
             msgBox.addButton(QMessageBox::Ok);
-            msgBox.addButton(tr("Edit commands..."), QMessageBox::ActionRole);
+            const auto editButton = msgBox.addButton(tr("Edit commands..."), QMessageBox::ActionRole);
             msgBox.setDefaultButton(QMessageBox::Ok);
             msgBox.setEscapeButton(QMessageBox::Ok);
 
-            QAbstractButton *button = msgBox.buttons().last();
-            connect(button, SIGNAL(clicked()), SLOT(showDialog()));
+            connect(editButton, &QAbstractButton::clicked, this, &CommandButton::showDialog);
 
             msgBox.exec();
             return;
@@ -83,33 +84,6 @@ void CommandButton::showDialog()
 {
     CommandDialog dialog(window());
     dialog.exec();
-}
-
-void CommandButton::populateMenu()
-{
-    mMenu->clear();
-
-    // Use a data model for getting the command list to avoid having to
-    // manually parse the settings
-    const CommandDataModel model;
-    const QList<Command> &commands = model.allCommands();
-
-    foreach (const Command &command, commands) {
-        if (!command.isEnabled)
-            continue;
-
-        QAction *action = mMenu->addAction(command.name);
-        action->setStatusTip(command.command);
-        action->setData(command.toQVariant());
-        connect(action, SIGNAL(triggered()), SLOT(runCommand()));
-    }
-
-    if (!mMenu->isEmpty())
-        mMenu->addSeparator();
-
-    // Add "Edit Commands..." action
-    QAction *action = mMenu->addAction(tr("Edit Commands..."));
-    connect(action, SIGNAL(triggered()), SLOT(showDialog()));
 }
 
 void CommandButton::changeEvent(QEvent *event)
@@ -128,5 +102,4 @@ void CommandButton::changeEvent(QEvent *event)
 void CommandButton::retranslateUi()
 {
     setToolTip(tr("Execute Command"));
-    setShortcut(QKeySequence(tr("F5")));
 }

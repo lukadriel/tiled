@@ -18,24 +18,27 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PAINTTILELAYER_H
-#define PAINTTILELAYER_H
+#pragma once
 
 #include "undocommands.h"
 
 #include <QRegion>
 #include <QUndoCommand>
 
+#include <memory>
+#include <unordered_map>
+
 namespace Tiled {
 
 class TileLayer;
-
-namespace Internal {
 
 class MapDocument;
 
 /**
  * A command that paints one tile layer on top of another tile layer.
+ *
+ * Can merge with additional commands, even when they paint on different
+ * tile layers.
  */
 class PaintTileLayer : public QUndoCommand
 {
@@ -52,33 +55,58 @@ public:
     PaintTileLayer(MapDocument *mapDocument,
                    TileLayer *target,
                    int x, int y,
-                   const TileLayer *source);
+                   const TileLayer *source,
+                   QUndoCommand *parent = nullptr);
 
-    ~PaintTileLayer();
+    /**
+     * Constructor that takes an explicit paint region.
+     *
+     * @param mapDocument the map document that's being edited
+     * @param target      the target layer to paint on
+     * @param x           the x position of the paint location
+     * @param y           the y position of the paint location
+     * @param source      the source layer to paint on the target layer
+     * @param paintRegion the region to paint, in map coordinates
+     */
+    PaintTileLayer(MapDocument *mapDocument,
+                   TileLayer *target,
+                   int x, int y,
+                   const TileLayer *source,
+                   const QRegion &paintRegion,
+                   QUndoCommand *parent = nullptr);
+
+    ~PaintTileLayer() override;
 
     /**
      * Sets whether this undo command can be merged with an existing command.
      */
-    void setMergeable(bool mergeable)
-    { mMergeable = mergeable; }
+    void setMergeable(bool mergeable);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
-    int id() const { return Cmd_PaintTileLayer; }
-    bool mergeWith(const QUndoCommand *other);
+    int id() const override { return Cmd_PaintTileLayer; }
+    bool mergeWith(const QUndoCommand *other) override;
 
 private:
+    struct LayerData
+    {
+        void mergeWith(const LayerData &o);
+
+        std::unique_ptr<TileLayer> mSource;
+        std::unique_ptr<TileLayer> mErased;
+        int mX, mY;
+        QRegion mPaintedRegion;
+    };
+
     MapDocument *mMapDocument;
-    TileLayer *mTarget;
-    TileLayer *mSource;
-    TileLayer *mErased;
-    int mX, mY;
-    QRegion mPaintedRegion;
+    std::unordered_map<TileLayer*, LayerData> mLayerData;
     bool mMergeable;
 };
 
-} // namespace Internal
-} // namespace Tiled
+inline void PaintTileLayer::setMergeable(bool mergeable)
+{
+    mMergeable = mergeable;
+}
 
-#endif // PAINTTILELAYER_H
+} // namespace Tiled

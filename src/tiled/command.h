@@ -18,10 +18,10 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef COMMAND_H
-#define COMMAND_H
+#pragma once
 
 #include <QString>
+#include <QKeySequence>
 #include <QProcess>
 #include <QVariant>
 
@@ -30,25 +30,26 @@
 #endif
 
 namespace Tiled {
-namespace Internal {
 
 struct Command
 {
-    Command(bool isEnabled = true,
-            const QString &name = QString(),
-            const QString &command = QString())
-        : isEnabled(isEnabled)
-        , name(name)
-        , command(command) {}
-
-    bool isEnabled;
+    bool isEnabled = true;
     QString name;
-    QString command;
+    QString executable;
+    QString arguments;
+    QString workingDirectory;
+    QKeySequence shortcut;
+    bool showOutput = true;
+    bool saveBeforeExecute = true;
 
     /**
      * Returns the final command with replaced tokens.
      */
     QString finalCommand() const;
+
+    QString finalWorkingDirectory() const;
+
+    QString replaceVariables(const QString &string, bool quoteValues = true) const;
 
     /**
      * Executes the command in the operating system shell or terminal
@@ -72,23 +73,22 @@ class CommandProcess : public QProcess
     Q_OBJECT
 
 public:
-    CommandProcess(const Command &command, bool inTerminal = false);
-
-private slots:
-    void handleError(QProcess::ProcessError);
+    CommandProcess(const Command &command, bool inTerminal = false, bool showOutput = true);
 
 private:
-    void handleError(const QString &);
+    void consoleOutput();
+    void consoleError();
+    void handleProcessError(QProcess::ProcessError);
+
+    void reportErrorAndDelete(const QString &);
 
     QString mName;
     QString mFinalCommand;
+    QString mFinalWorkingDirectory;
 
 #ifdef Q_OS_MAC
     QTemporaryFile mFile;
 #endif
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // COMMAND_H

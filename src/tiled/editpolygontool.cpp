@@ -22,6 +22,8 @@
 
 #include "addremovemapobject.h"
 #include "changepolygon.h"
+#include "createpolygonobjecttool.h"
+#include "geometry.h"
 #include "layer.h"
 #include "map.h"
 #include "mapdocument.h"
@@ -29,117 +31,45 @@
 #include "mapobjectitem.h"
 #include "maprenderer.h"
 #include "mapscene.h"
+#include "objectgroup.h"
+#include "objectselectiontool.h"
+#include "pointhandle.h"
 #include "rangeset.h"
 #include "selectionrectangle.h"
 #include "snaphelper.h"
+#include "toolmanager.h"
 #include "utils.h"
 
 #include <QApplication>
-#include <QGraphicsItem>
 #include <QGraphicsView>
+#include <QKeyEvent>
 #include <QMenu>
-#include <QPainter>
-#include <QPalette>
 #include <QUndoStack>
 
+#include "changeevents.h"
+#include "qtcompat_p.h"
+
+#include <cstdlib>
+
 using namespace Tiled;
-using namespace Tiled::Internal;
-
-namespace Tiled {
-namespace Internal {
-
-/**
- * A handle that allows moving around a point of a polygon.
- */
-class PointHandle : public QGraphicsItem
-{
-public:
-    PointHandle(MapObjectItem *mapObjectItem, int pointIndex)
-        : QGraphicsItem()
-        , mMapObjectItem(mapObjectItem)
-        , mPointIndex(pointIndex)
-        , mSelected(false)
-    {
-        setFlags(QGraphicsItem::ItemIgnoresTransformations |
-                 QGraphicsItem::ItemIgnoresParentOpacity);
-        setZValue(10000);
-        setCursor(Qt::SizeAllCursor);
-    }
-
-    enum { Type = UserType + 2 };
-    int type() const { return Type; }
-
-    MapObjectItem *mapObjectItem() const { return mMapObjectItem; }
-    MapObject *mapObject() const { return mMapObjectItem->mapObject(); }
-
-    int pointIndex() const { return mPointIndex; }
-
-    void setPointPosition(const QPointF &pos);
-
-    // These hide the QGraphicsItem members
-    void setSelected(bool selected) { mSelected = selected; update(); }
-    bool isSelected() const { return mSelected; }
-
-    QRectF boundingRect() const;
-    void paint(QPainter *painter,
-               const QStyleOptionGraphicsItem *option,
-               QWidget *widget = 0);
-
-private:
-    MapObjectItem *mMapObjectItem;
-    int mPointIndex;
-    bool mSelected;
-};
-
-} // namespace Internal
-} // namespace Tiled
-
-void PointHandle::setPointPosition(const QPointF &pos)
-{
-    // TODO: It could be faster to update the polygon only once when changing
-    // multiple points of the same polygon.
-    MapObject *mapObject = mMapObjectItem->mapObject();
-    QPolygonF polygon = mapObject->polygon();
-    polygon[mPointIndex] = pos - mapObject->position();
-    mMapObjectItem->setPolygon(polygon);
-}
-
-QRectF PointHandle::boundingRect() const
-{
-    return QRectF(-5, -5, 10 + 1, 10 + 1);
-}
-
-void PointHandle::paint(QPainter *painter,
-                        const QStyleOptionGraphicsItem *,
-                        QWidget *)
-{
-    painter->setPen(Qt::black);
-    if (mSelected) {
-        painter->setBrush(QApplication::palette().highlight());
-        painter->drawRect(QRectF(-4, -4, 8, 8));
-    } else {
-        painter->setBrush(Qt::lightGray);
-        painter->drawRect(QRectF(-3, -3, 6, 6));
-    }
-}
-
 
 EditPolygonTool::EditPolygonTool(QObject *parent)
-    : AbstractObjectTool(tr("Edit Polygons"),
-          QIcon(QLatin1String(":images/24x24/tool-edit-polygons.png")),
-          QKeySequence(tr("E")),
-          parent)
+    : AbstractObjectTool("EditPolygonTool",
+                         tr("Edit Polygons"),
+                         QIcon(QLatin1String(":images/24/tool-edit-polygons.png")),
+                         QKeySequence(Qt::Key_O),
+                         parent)
     , mSelectionRectangle(new SelectionRectangle)
     , mMousePressed(false)
-    , mClickedHandle(0)
-    , mClickedObjectItem(0)
-    , mMode(NoMode)
+    , mHoveredHandle(nullptr)
+    , mClickedHandle(nullptr)
+    , mClickedObject(nullptr)
+    , mAction(NoAction)
 {
 }
 
 EditPolygonTool::~EditPolygonTool()
 {
-    delete mSelectionRectangle;
 }
 
 void EditPolygonTool::activate(MapScene *scene)
@@ -151,32 +81,49 @@ void EditPolygonTool::activate(MapScene *scene)
     // TODO: Could be more optimal by separating the updating of handles from
     // the creation and removal of handles depending on changes in the
     // selection, and by only updating the handles of the objects that changed.
-    connect(mapDocument(), SIGNAL(objectsChanged(QList<MapObject*>)),
-            this, SLOT(updateHandles()));
-    connect(scene, SIGNAL(selectedObjectItemsChanged()),
-            this, SLOT(updateHandles()));
-
-    connect(mapDocument(), SIGNAL(objectsRemoved(QList<MapObject*>)),
-            this, SLOT(objectsRemoved(QList<MapObject*>)));
+    connect(mapDocument(), &MapDocument::selectedObjectsChanged,
+            this, &EditPolygonTool::updateHandles);
 }
 
 void EditPolygonTool::deactivate(MapScene *scene)
 {
-    disconnect(mapDocument(), SIGNAL(objectsChanged(QList<MapObject*>)),
-               this, SLOT(updateHandles()));
-    disconnect(scene, SIGNAL(selectedObjectItemsChanged()),
-               this, SLOT(updateHandles()));
+    disconnect(mapDocument(), &MapDocument::selectedObjectsChanged,
+               this, &EditPolygonTool::updateHandles);
+
+    abortCurrentAction();
 
     // Delete all handles
-    QMapIterator<MapObjectItem*, QList<PointHandle*> > i(mHandles);
+    QHashIterator<MapObject*, QList<PointHandle*> > i(mHandles);
     while (i.hasNext())
         qDeleteAll(i.next().value());
 
+    mHoveredHandle = nullptr;
+    mHoveredSegment.clear();
     mHandles.clear();
     mSelectedHandles.clear();
-    mClickedHandle = 0;
+    mHighlightedHandles.clear();
 
     AbstractObjectTool::deactivate(scene);
+}
+
+void EditPolygonTool::keyPressed(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_Escape:
+        if (mAction != NoAction) {
+            // Abort the current action if any is being performed
+            abortCurrentAction();
+        } else if (!mSelectedHandles.isEmpty()) {
+            // Clear the handle selection if there is one
+            setSelectedHandles(QSet<PointHandle*>());
+        } else {
+            // Switch to object selection tool
+            toolManager()->selectTool(toolManager()->findTool<ObjectSelectionTool>());
+        }
+        return;
+    }
+
+    AbstractObjectTool::keyPressed(event);
 }
 
 void EditPolygonTool::mouseEntered()
@@ -188,37 +135,47 @@ void EditPolygonTool::mouseMoved(const QPointF &pos,
 {
     AbstractObjectTool::mouseMoved(pos, modifiers);
 
-    if (mMode == NoMode && mMousePressed) {
+    updateHover(pos);
+
+    if (mAction == NoAction && mMousePressed) {
         QPoint screenPos = QCursor::pos();
         const int dragDistance = (mScreenStart - screenPos).manhattanLength();
-        if (dragDistance >= QApplication::startDragDistance()) {
-            if (mClickedHandle)
-                startMoving();
-            else
+
+        // Use a reduced start drag distance to increase the responsiveness
+        if (dragDistance >= QApplication::startDragDistance() / 2) {
+            // Holding Alt forces moving current selection
+            const bool forceMove = (modifiers & Qt::AltModifier) && !mSelectedHandles.isEmpty();
+
+            // Holding Shift forces selection rectangle
+            const bool forceSelect = modifiers & Qt::ShiftModifier;
+
+            if (!forceSelect && (forceMove || mClickedHandle || mClickedSegment)) {
+                // Move only the clicked handles, if any were not part of the selection
+                if (!forceMove) {
+                    QSet<PointHandle*> handles = clickedHandles();
+                    if (!mSelectedHandles.contains(handles))
+                        setSelectedHandles(handles);
+                }
+
+                startMoving(pos);
+            } else {
                 startSelecting();
+            }
         }
     }
 
-    switch (mMode) {
+    switch (mAction) {
     case Selecting:
         mSelectionRectangle->setRectangle(QRectF(mStart, pos).normalized());
         break;
     case Moving:
         updateMovingItems(pos, modifiers);
         break;
-    case NoMode:
+    case NoAction:
         break;
     }
-}
 
-template <class T>
-static T *first(const QList<QGraphicsItem *> &items)
-{
-    foreach (QGraphicsItem *item, items) {
-        if (T *t = qgraphicsitem_cast<T*>(item))
-            return t;
-    }
-    return 0;
+    mLastMousePos = pos;
 }
 
 static QTransform viewTransform(QGraphicsSceneMouseEvent *event)
@@ -231,8 +188,14 @@ static QTransform viewTransform(QGraphicsSceneMouseEvent *event)
 
 void EditPolygonTool::mousePressed(QGraphicsSceneMouseEvent *event)
 {
-    if (mMode != NoMode) // Ignore additional presses during select/move
+    if (mAction != NoAction) // Ignore additional presses during select/move
         return;
+
+    // Scene or view may have changed since last mouse event
+    updateHover(event->scenePos(), event);
+
+    mClickedHandle = mHoveredHandle;
+    mClickedSegment = mHoveredSegment;
 
     switch (event->button()) {
     case Qt::LeftButton: {
@@ -245,20 +208,26 @@ void EditPolygonTool::mousePressed(QGraphicsSceneMouseEvent *event)
                                                                Qt::DescendingOrder,
                                                                viewTransform(event));
 
-        mClickedObjectItem = first<MapObjectItem>(items);
-        mClickedHandle = first<PointHandle>(items);
+        mClickedObject = nullptr;
+        for (QGraphicsItem *item : items) {
+            if (!item->isEnabled())
+                continue;
+            if (auto mapObjectItem = qgraphicsitem_cast<MapObjectItem*>(item)) {
+                if (mapObjectItem->mapObject()->objectGroup()->isUnlocked()) {
+                    mClickedObject = mapObjectItem->mapObject();
+                    break;
+                }
+            }
+        }
         break;
     }
     case Qt::RightButton: {
-        const QList<QGraphicsItem *> items = mapScene()->items(event->scenePos(),
-                                                               Qt::IntersectsItemShape,
-                                                               Qt::DescendingOrder,
-                                                               viewTransform(event));
+        if (mClickedHandle || mClickedSegment || !mSelectedHandles.isEmpty()) {
+            QSet<PointHandle*> handles = clickedHandles();
+            if (!mSelectedHandles.contains(handles))
+                setSelectedHandles(handles);
 
-        PointHandle *clickedHandle = first<PointHandle>(items);
-        if (clickedHandle || !mSelectedHandles.isEmpty()) {
-            showHandleContextMenu(clickedHandle,
-                                  event->screenPos());
+            showHandleContextMenu(event->screenPos());
         } else {
             AbstractObjectTool::mousePressed(event);
         }
@@ -274,49 +243,51 @@ void EditPolygonTool::mouseReleased(QGraphicsSceneMouseEvent *event)
 {
     if (event->button() != Qt::LeftButton)
         return;
+    if (!mMousePressed)
+        return; // we didn't receive press so we should ignore this release
 
-    switch (mMode) {
-    case NoMode:
-        if (mClickedHandle) {
+    switch (mAction) {
+    case NoAction:
+        if (mClickedHandle || mClickedSegment) {
             QSet<PointHandle*> selection = mSelectedHandles;
+            QSet<PointHandle*> clicked = clickedHandles();
+
             const Qt::KeyboardModifiers modifiers = event->modifiers();
             if (modifiers & (Qt::ShiftModifier | Qt::ControlModifier)) {
-                if (selection.contains(mClickedHandle))
-                    selection.remove(mClickedHandle);
+                if (selection.contains(clicked))
+                    selection.subtract(clicked);
                 else
-                    selection.insert(mClickedHandle);
+                    selection.unite(clicked);
             } else {
-                selection.clear();
-                selection.insert(mClickedHandle);
+                selection = clicked;
             }
             setSelectedHandles(selection);
-        } else if (mClickedObjectItem) {
-            QSet<MapObjectItem*> selection = mapScene()->selectedObjectItems();
+        } else if (MapObject *clickedObject = mClickedObject) {
+            QList<MapObject*> selection = mapDocument()->selectedObjects();
             const Qt::KeyboardModifiers modifiers = event->modifiers();
             if (modifiers & (Qt::ShiftModifier | Qt::ControlModifier)) {
-                if (selection.contains(mClickedObjectItem))
-                    selection.remove(mClickedObjectItem);
+                int index = selection.indexOf(clickedObject);
+                if (index != -1)
+                    selection.removeAt(index);
                 else
-                    selection.insert(mClickedObjectItem);
+                    selection.append(clickedObject);
             } else {
                 selection.clear();
-                selection.insert(mClickedObjectItem);
+                selection.append(clickedObject);
             }
-            mapScene()->setSelectedObjectItems(selection);
-            updateHandles();
+            mapDocument()->setSelectedObjects(selection);
         } else if (!mSelectedHandles.isEmpty()) {
             // First clear the handle selection
             setSelectedHandles(QSet<PointHandle*>());
-        } else {
+        } else if (!mapDocument()->selectedObjects().isEmpty()) {
             // If there is no handle selection, clear the object selection
-            mapScene()->setSelectedObjectItems(QSet<MapObjectItem*>());
-            updateHandles();
+            mapDocument()->setSelectedObjects(QList<MapObject*>());
         }
         break;
     case Selecting:
         updateSelection(event);
-        mapScene()->removeItem(mSelectionRectangle);
-        mMode = NoMode;
+        mapScene()->removeItem(mSelectionRectangle.get());
+        mAction = NoAction;
         break;
     case Moving:
         finishMoving(event->scenePos());
@@ -324,7 +295,37 @@ void EditPolygonTool::mouseReleased(QGraphicsSceneMouseEvent *event)
     }
 
     mMousePressed = false;
-    mClickedHandle = 0;
+    mClickedHandle = nullptr;
+    mClickedSegment.clear();
+
+    updateHover(event->scenePos(), event);
+}
+
+void EditPolygonTool::mouseDoubleClicked(QGraphicsSceneMouseEvent *event)
+{
+    mousePressed(event);
+
+    if (mAction == NoAction && mClickedSegment) {
+        // Split the segment at the location nearest to the mouse
+        QPolygonF oldPolygon = mClickedSegment.object->polygon();
+        QPolygonF newPolygon = oldPolygon;
+        newPolygon.insert(mClickedSegment.index + 1, mClickedSegment.nearestPointOnLine);
+
+        auto splitSegment = new ChangePolygon(mapDocument(),
+                                              mClickedSegment.object,
+                                              newPolygon,
+                                              oldPolygon);
+        splitSegment->setText(tr("Split Segment"));
+
+        mapDocument()->undoStack()->push(splitSegment);
+
+        auto newNodeHandle = mHandles.value(mClickedSegment.object).at(mClickedSegment.index + 1);
+        setSelectedHandle(newNodeHandle);
+        setHighlightedHandles(mSelectedHandles);
+        mHoveredHandle = newNodeHandle;
+        mClickedSegment.clear();
+        mClickedHandle = newNodeHandle;
+    }
 }
 
 void EditPolygonTool::modifiersChanged(Qt::KeyboardModifiers modifiers)
@@ -334,21 +335,35 @@ void EditPolygonTool::modifiersChanged(Qt::KeyboardModifiers modifiers)
 
 void EditPolygonTool::languageChanged()
 {
+    AbstractObjectTool::languageChanged();
+
     setName(tr("Edit Polygons"));
-    setShortcut(QKeySequence(tr("E")));
 }
 
 void EditPolygonTool::setSelectedHandles(const QSet<PointHandle *> &handles)
 {
-    foreach (PointHandle *handle, mSelectedHandles)
+    for (PointHandle *handle : qAsConst(mSelectedHandles))
         if (!handles.contains(handle))
             handle->setSelected(false);
 
-    foreach (PointHandle *handle, handles)
+    for (PointHandle *handle : handles)
         if (!mSelectedHandles.contains(handle))
             handle->setSelected(true);
 
     mSelectedHandles = handles;
+}
+
+void EditPolygonTool::setHighlightedHandles(const QSet<PointHandle *> &handles)
+{
+    for (PointHandle *handle : qAsConst(mHighlightedHandles))
+        if (!handles.contains(handle))
+            handle->setHighlighted(false);
+
+    for (PointHandle *handle : handles)
+        if (!mHighlightedHandles.contains(handle))
+            handle->setHighlighted(true);
+
+    mHighlightedHandles = handles;
 }
 
 /**
@@ -357,71 +372,87 @@ void EditPolygonTool::setSelectedHandles(const QSet<PointHandle *> &handles)
  */
 void EditPolygonTool::updateHandles()
 {
-    const QSet<MapObjectItem*> &selection = mapScene()->selectedObjectItems();
+    const QList<MapObject*> &selection = mapDocument()->selectedObjects();
+
+    auto deleteHandle = [this](PointHandle *handle) {
+        if (mHoveredHandle == handle)
+            mHoveredHandle = nullptr;
+        if (mClickedHandle == handle)
+            mClickedHandle = nullptr;
+        if (handle->isSelected())
+            mSelectedHandles.remove(handle);
+        if (handle->isHighlighted())
+            mHighlightedHandles.remove(handle);
+        delete handle;
+    };
 
     // First destroy the handles for objects that are no longer selected
-    QMutableMapIterator<MapObjectItem*, QList<PointHandle*> > i(mHandles);
+    QMutableHashIterator<MapObject*, QList<PointHandle*> > i(mHandles);
     while (i.hasNext()) {
         i.next();
         if (!selection.contains(i.key())) {
-            foreach (PointHandle *handle, i.value()) {
-                if (handle->isSelected())
-                    mSelectedHandles.remove(handle);
-                delete handle;
-            }
+            for (PointHandle *handle : qAsConst(i.value()))
+                deleteHandle(handle);
 
             i.remove();
         }
     }
+    if (mHoveredSegment && !selection.contains(mHoveredSegment.object))
+        mHoveredSegment.clear();
+    if (mClickedSegment && !selection.contains(mClickedSegment.object))
+        mClickedSegment.clear();
 
     MapRenderer *renderer = mapDocument()->renderer();
 
-    foreach (MapObjectItem *item, selection) {
-        const MapObject *object = item->mapObject();
+    for (MapObject *object : selection) {
         if (!object->cell().isEmpty())
             continue;
 
-        QPolygonF polygon = object->polygon();
-        polygon.translate(object->position());
+        const QPolygonF &polygon = object->polygon();
 
-        QList<PointHandle*> pointHandles = mHandles.value(item);
+        QList<PointHandle*> &pointHandles = mHandles[object];
 
         // Create missing handles
         while (pointHandles.size() < polygon.size()) {
-            PointHandle *handle = new PointHandle(item, pointHandles.size());
+            PointHandle *handle = new PointHandle(object, pointHandles.size());
             pointHandles.append(handle);
             mapScene()->addItem(handle);
         }
 
         // Remove superfluous handles
-        while (pointHandles.size() > polygon.size()) {
-            PointHandle *handle = pointHandles.takeLast();
-            if (handle->isSelected())
-                mSelectedHandles.remove(handle);
-            delete handle;
-        }
+        while (pointHandles.size() > polygon.size())
+            deleteHandle(pointHandles.takeLast());
+
+        if (pointHandles.isEmpty())
+            continue;
+
+        QPointF objectScreenPos = renderer->pixelToScreenCoords(object->position());
+        QTransform rotate = rotateAt(objectScreenPos, object->rotation());
+        QPointF totalOffset = object->objectGroup()->totalOffset();
 
         // Update the position of all handles
         for (int i = 0; i < pointHandles.size(); ++i) {
-            const QPointF &point = polygon.at(i);
-            const QPointF handlePos = renderer->pixelToScreenCoords(point);
-            const QPointF internalHandlePos = handlePos - item->pos();
-            pointHandles.at(i)->setPos(item->mapToScene(internalHandlePos));
+            QPointF pixelPos = polygon.at(i) + object->position();
+            QPointF screenPos = renderer->pixelToScreenCoords(pixelPos);
+            screenPos = rotate.map(screenPos);
+            pointHandles.at(i)->setPos(totalOffset + screenPos);
         }
-
-        mHandles.insert(item, pointHandles);
     }
 }
 
-void EditPolygonTool::objectsRemoved(const QList<MapObject *> &objects)
+void EditPolygonTool::objectsAboutToBeRemoved(const QList<MapObject *> &objects)
 {
-    if (mMode == Moving) {
+    if (mAction == Moving) {
         // Make sure we're not going to try to still change these objects when
         // finishing the move operation.
         // TODO: In addition to avoiding crashes, it would also be good to
         // disallow other actions while moving.
-        foreach (MapObject *object, objects)
-            mOldPolygons.remove(object);
+        for (MapObject *object : objects) {
+            if (mOldPolygons.contains(object)) {
+                abortCurrentAction(objects);
+                break;
+            }
+        }
     }
 }
 
@@ -433,41 +464,30 @@ void EditPolygonTool::updateSelection(QGraphicsSceneMouseEvent *event)
     rect.setWidth(qMax(qreal(1), rect.width()));
     rect.setHeight(qMax(qreal(1), rect.height()));
 
-    const QSet<MapObjectItem*> oldSelection = mapScene()->selectedObjectItems();
+    const auto intersectedItems = mapScene()->items(rect,
+                                                    Qt::IntersectsItemShape,
+                                                    Qt::DescendingOrder,
+                                                    viewTransform(event));
 
-    if (oldSelection.isEmpty()) {
+    if (mapDocument()->selectedObjects().isEmpty()) {
         // Allow selecting some map objects only when there aren't any selected
-        QSet<MapObjectItem*> selectedItems;
+        QList<MapObject*> selectedObjects;
 
-        foreach (QGraphicsItem *item, mapScene()->items(rect,
-                                                        Qt::IntersectsItemShape,
-                                                        Qt::DescendingOrder,
-                                                        viewTransform(event))) {
-            MapObjectItem *mapObjectItem = dynamic_cast<MapObjectItem*>(item);
-            if (mapObjectItem)
-                selectedItems.insert(mapObjectItem);
+        for (QGraphicsItem *item : intersectedItems) {
+            if (!item->isEnabled())
+                continue;
+            auto mapObjectItem = qgraphicsitem_cast<MapObjectItem*>(item);
+            if (mapObjectItem && mapObjectItem->mapObject()->objectGroup()->isUnlocked())
+                selectedObjects.append(mapObjectItem->mapObject());
         }
 
-
-        QSet<MapObjectItem*> newSelection;
-
-        if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
-            newSelection = oldSelection | selectedItems;
-        } else {
-            newSelection = selectedItems;
-        }
-
-        mapScene()->setSelectedObjectItems(newSelection);
-        updateHandles();
+        mapDocument()->setSelectedObjects(selectedObjects);
     } else {
         // Update the selected handles
         QSet<PointHandle*> selectedHandles;
 
-        foreach (QGraphicsItem *item, mapScene()->items(rect,
-                                                        Qt::IntersectsItemShape,
-                                                        Qt::DescendingOrder,
-                                                        viewTransform(event))) {
-            if (PointHandle *handle = dynamic_cast<PointHandle*>(item))
+        for (QGraphicsItem *item : intersectedItems) {
+            if (PointHandle *handle = qgraphicsitem_cast<PointHandle*>(item))
                 selectedHandles.insert(handle);
         }
 
@@ -480,17 +500,14 @@ void EditPolygonTool::updateSelection(QGraphicsSceneMouseEvent *event)
 
 void EditPolygonTool::startSelecting()
 {
-    mMode = Selecting;
-    mapScene()->addItem(mSelectionRectangle);
+    mAction = Selecting;
+    mapScene()->addItem(mSelectionRectangle.get());
 }
 
-void EditPolygonTool::startMoving()
+void EditPolygonTool::startMoving(const QPointF &pos)
 {
-    // Move only the clicked handle, if it was not part of the selection
-    if (!mSelectedHandles.contains(mClickedHandle))
-        setSelectedHandle(mClickedHandle);
-
-    mMode = Moving;
+    mAction = Moving;
+    mStart = pos;
 
     MapRenderer *renderer = mapDocument()->renderer();
 
@@ -499,7 +516,7 @@ void EditPolygonTool::startMoving()
     mOldPolygons.clear();
     mAlignPosition = renderer->screenToPixelCoords((*mSelectedHandles.begin())->pos());
 
-    foreach (PointHandle *handle, mSelectedHandles) {
+    for (PointHandle *handle : qAsConst(mSelectedHandles)) {
         const QPointF pos = renderer->screenToPixelCoords(handle->pos());
         mOldHandlePositions.append(handle->pos());
         if (pos.x() < mAlignPosition.x())
@@ -532,21 +549,32 @@ void EditPolygonTool::updateMovingItems(const QPointF &pos,
     }
 
     int i = 0;
-    foreach (PointHandle *handle, mSelectedHandles) {
-        const MapObjectItem *item = handle->mapObjectItem();
-        const QPointF newPixelPos = mOldHandlePositions.at(i) + diff;
-        const QPointF newInternalPos = item->mapFromScene(newPixelPos);
-        const QPointF newScenePos = item->pos() + newInternalPos;
-        handle->setPos(newPixelPos);
-        handle->setPointPosition(renderer->screenToPixelCoords(newScenePos));
+    for (PointHandle *handle : qAsConst(mSelectedHandles)) {
+        // update handle position
+        QPointF newScreenPos = mOldHandlePositions.at(i) + diff;
+        handle->setPos(newScreenPos);
+
+        // calculate new pixel position of polygon node
+        MapObject *object = handle->mapObject();
+        QPointF objectScreenPos = renderer->pixelToScreenCoords(object->position());
+        QTransform rotate = rotateAt(objectScreenPos, -object->rotation());
+        newScreenPos = rotate.map(newScreenPos - object->objectGroup()->totalOffset());
+        QPointF newPixelPos = renderer->screenToPixelCoords(newScreenPos);
+
+        // update the polygon
+        QPolygonF polygon = object->polygon();
+        polygon[handle->pointIndex()] = newPixelPos - object->position();
+        object->setPolygon(polygon);
+        emit mapDocument()->changed(MapObjectsChangeEvent(object, MapObject::ShapeProperty));
+
         ++i;
     }
 }
 
 void EditPolygonTool::finishMoving(const QPointF &pos)
 {
-    Q_ASSERT(mMode == Moving);
-    mMode = NoMode;
+    Q_ASSERT(mAction == Moving);
+    mAction = NoAction;
 
     if (mStart == pos || mOldPolygons.isEmpty()) // Move is a no-op
         return;
@@ -556,7 +584,7 @@ void EditPolygonTool::finishMoving(const QPointF &pos)
 
     // TODO: This isn't really optimal. Would be better to have a single undo
     // command that supports changing multiple map objects.
-    QMapIterator<MapObject*, QPolygonF> i(mOldPolygons);
+    QHashIterator<MapObject*, QPolygonF> i(mOldPolygons);
     while (i.hasNext()) {
         i.next();
         undoStack->push(new ChangePolygon(mapDocument(), i.key(), i.value()));
@@ -568,16 +596,48 @@ void EditPolygonTool::finishMoving(const QPointF &pos)
     mOldPolygons.clear();
 }
 
-void EditPolygonTool::showHandleContextMenu(PointHandle *clickedHandle,
-                                            QPoint screenPos)
+void EditPolygonTool::abortCurrentAction(const QList<MapObject *> &removedObjects)
 {
-    if (clickedHandle && !mSelectedHandles.contains(clickedHandle))
-        setSelectedHandle(clickedHandle);
+    switch (mAction) {
+    case NoAction:
+        break;
+    case Selecting:
+        mapScene()->removeItem(mSelectionRectangle.get());
+        break;
+    case Moving:
+        // Reset the polygons
+        QHashIterator<MapObject*, QPolygonF> i(mOldPolygons);
+        while (i.hasNext()) {
+            i.next();
 
+            MapObject *object = i.key();
+            const QPolygonF &oldPolygon = i.value();
+
+            object->setPolygon(oldPolygon);
+
+            if (!removedObjects.contains(object))
+                emit mapDocument()->changed(MapObjectsChangeEvent(object, MapObject::ShapeProperty));
+        }
+
+        mOldPolygons.clear();
+        break;
+    }
+
+    mAction = NoAction;
+    mMousePressed = false;
+    mClickedHandle = nullptr;
+    mClickedSegment.clear();
+    mClickedObject = nullptr;
+
+    updateHover(mLastMousePos);
+}
+
+void EditPolygonTool::showHandleContextMenu(QPoint screenPos)
+{
     const int n = mSelectedHandles.size();
     Q_ASSERT(n > 0);
 
-    QIcon delIcon(QLatin1String(":images/16x16/edit-delete.png"));
+    QIcon delIcon(QLatin1String(":images/16/edit-delete.png"));
     QString delText = tr("Delete %n Node(s)", "", n);
 
     QMenu menu;
@@ -585,27 +645,76 @@ void EditPolygonTool::showHandleContextMenu(PointHandle *clickedHandle,
     QAction *deleteNodesAction = menu.addAction(delIcon, delText);
     QAction *joinNodesAction = menu.addAction(tr("Join Nodes"));
     QAction *splitSegmentsAction = menu.addAction(tr("Split Segments"));
+    QAction *deleteSegment = menu.addAction(tr("Delete Segment"));
 
     Utils::setThemeIcon(deleteNodesAction, "edit-delete");
 
     joinNodesAction->setEnabled(n > 1);
     splitSegmentsAction->setEnabled(n > 1);
 
-    connect(deleteNodesAction, SIGNAL(triggered()), SLOT(deleteNodes()));
-    connect(joinNodesAction, SIGNAL(triggered()), SLOT(joinNodes()));
-    connect(splitSegmentsAction, SIGNAL(triggered()), SLOT(splitSegments()));
+    const PointHandle *firstHandle = *mSelectedHandles.constBegin();
+    const MapObject *mapObject = firstHandle->mapObject();
+
+    bool canDeleteSegment = false;
+    if (n == 2) {
+        const PointHandle *secondHandle = *(mSelectedHandles.constBegin() + 1);
+        const MapObject *secondMapObject = secondHandle->mapObject();
+
+        int indexDifference = std::abs(firstHandle->pointIndex() - secondHandle->pointIndex());
+
+        canDeleteSegment = (mapObject == secondMapObject) &&
+                ((indexDifference == 1) ||
+                 (indexDifference == mapObject->polygon().size() - 1 &&
+                  mapObject->shape() == MapObject::Polygon));
+    }
+
+    deleteSegment->setEnabled(canDeleteSegment);
+
+    connect(deleteNodesAction, &QAction::triggered, this, &EditPolygonTool::deleteNodes);
+    connect(joinNodesAction, &QAction::triggered, this, &EditPolygonTool::joinNodes);
+    connect(splitSegmentsAction, &QAction::triggered, this, &EditPolygonTool::splitSegments);
+    connect(deleteSegment, &QAction::triggered, this, &EditPolygonTool::deleteSegment);
+
+    if (mapObject->shape() == MapObject::Polyline && toolManager()->findTool<CreatePolygonObjectTool>()) {
+        QAction *extendPolyline = menu.addAction(tr("Extend Polyline"));
+
+        bool handleCanBeExtended = (firstHandle->pointIndex() == 0)
+                                   || (firstHandle->pointIndex() == mapObject->polygon().size() - 1);
+
+        extendPolyline->setEnabled(n == 1 && handleCanBeExtended);
+        connect(extendPolyline, &QAction::triggered, this, &EditPolygonTool::extendPolyline);
+    }
 
     menu.exec(screenPos);
 }
 
-typedef QMap<MapObject*, RangeSet<int> > PointIndexesByObject;
+/**
+ * Returns all clicked handles. This may return two handles when a polygon
+ * segment was clicked.
+ */
+QSet<PointHandle *> EditPolygonTool::clickedHandles() const
+{
+    QSet<PointHandle*> handles;
+
+    if (mClickedHandle) {
+        handles.insert(mClickedHandle);
+    } else if (mClickedSegment) {
+        auto handlesForObject = mHandles.value(mClickedSegment.object);
+        handles.insert(handlesForObject.at(mClickedSegment.index));
+        handles.insert(handlesForObject.at((mClickedSegment.index + 1) % handlesForObject.size()));
+    }
+
+    return handles;
+}
+
+typedef QHash<MapObject*, RangeSet<int> > PointIndexesByObject;
 static PointIndexesByObject
 groupIndexesByObject(const QSet<PointHandle*> &handles)
 {
     PointIndexesByObject result;
 
     // Build the list of point indexes for each map object
-    foreach (PointHandle *handle, handles) {
+    for (PointHandle *handle : handles) {
         RangeSet<int> &pointIndexes = result[handle->mapObject()];
         pointIndexes.insert(handle->pointIndex());
     }
@@ -619,7 +728,7 @@ void EditPolygonTool::deleteNodes()
         return;
 
     PointIndexesByObject p = groupIndexesByObject(mSelectedHandles);
-    QMapIterator<MapObject*, RangeSet<int> > i(p);
+    QHashIterator<MapObject*, RangeSet<int> > i(p);
 
     QUndoStack *undoStack = mapDocument()->undoStack();
 
@@ -644,7 +753,7 @@ void EditPolygonTool::deleteNodes()
 
         if (newPolygon.size() < 2) {
             // We've removed the entire object
-            undoStack->push(new RemoveMapObject(mapDocument(), object));
+            undoStack->push(new RemoveMapObjects(mapDocument(), object));
         } else {
             undoStack->push(new ChangePolygon(mapDocument(), object,
                                               newPolygon,
@@ -653,6 +762,37 @@ void EditPolygonTool::deleteNodes()
     }
 
     undoStack->endMacro();
+}
+
+void EditPolygonTool::changeEvent(const ChangeEvent &event)
+{
+    AbstractObjectTool::changeEvent(event);
+
+    if (!mapScene())
+        return;
+
+    switch (event.type) {
+    case ChangeEvent::LayerChanged:
+        if (static_cast<const LayerChangeEvent&>(event).properties & LayerChangeEvent::OffsetProperty)
+            updateHandles();
+        break;
+    case ChangeEvent::MapObjectsChanged: {
+        constexpr auto propertiesAffectingHandles =
+                MapObject::PositionProperty |
+                MapObject::RotationProperty |
+                MapObject::ShapeProperty;
+
+        if (static_cast<const MapObjectsChangeEvent&>(event).properties & propertiesAffectingHandles)
+            updateHandles();
+
+        break;
+    }
+    case ChangeEvent::MapObjectsAboutToBeRemoved:
+        objectsAboutToBeRemoved(static_cast<const MapObjectsEvent&>(event).mapObjects);
+        break;
+    default:
+        break;
+    }
 }
 
 /**
@@ -782,7 +922,7 @@ void EditPolygonTool::joinNodes()
         return;
 
     const PointIndexesByObject p = groupIndexesByObject(mSelectedHandles);
-    QMapIterator<MapObject*, RangeSet<int> > i(p);
+    QHashIterator<MapObject*, RangeSet<int> > i(p);
 
     QUndoStack *undoStack = mapDocument()->undoStack();
     bool macroStarted = false;
@@ -818,7 +958,7 @@ void EditPolygonTool::splitSegments()
         return;
 
     const PointIndexesByObject p = groupIndexesByObject(mSelectedHandles);
-    QMapIterator<MapObject*, RangeSet<int> > i(p);
+    QHashIterator<MapObject*, RangeSet<int> > i(p);
 
     QUndoStack *undoStack = mapDocument()->undoStack();
     bool macroStarted = false;
@@ -846,4 +986,161 @@ void EditPolygonTool::splitSegments()
 
     if (macroStarted)
         undoStack->endMacro();
+}
+
+void EditPolygonTool::extendPolyline()
+{
+    // Handle is going to be deleted when switching tools
+    PointHandle *selectedHandle = *mSelectedHandles.constBegin();
+    MapObject *mapObject = selectedHandle->mapObject();
+    bool extendingFirst = selectedHandle->pointIndex() == 0;
+
+    auto *polygonObjectsTool = toolManager()->findTool<CreatePolygonObjectTool>();
+    if (toolManager()->selectTool(polygonObjectsTool))
+        polygonObjectsTool->extend(mapObject, extendingFirst);
+}
+
+void EditPolygonTool::deleteSegment()
+{
+    if (mSelectedHandles.size() != 2)
+        return;
+
+    const auto &firstHandle = *mSelectedHandles.begin();
+    const auto &secondHandle = *(mSelectedHandles.begin() + 1);
+
+    MapObject *mapObject = firstHandle->mapObject();
+
+    if (mapObject->shape() == MapObject::Polyline) {
+        int minIndex = std::min(firstHandle->pointIndex(), secondHandle->pointIndex());
+        int maxIndex = std::max(firstHandle->pointIndex(), secondHandle->pointIndex());
+        int polygonSize = mapObject->polygon().size();
+
+        if (minIndex == 0) {
+            setSelectedHandle((firstHandle->pointIndex() == 0) ? firstHandle : secondHandle);
+            deleteNodes();
+        } else if (maxIndex == polygonSize - 1) {
+            setSelectedHandle((firstHandle->pointIndex() == polygonSize - 1) ? firstHandle : secondHandle);
+            deleteNodes();
+        } else {
+            mapDocument()->undoStack()->push(new SplitPolyline(mapDocument(), mapObject, minIndex));
+        }
+    } else {
+        QPolygonF polygon = mapObject->polygon();
+        QPolygonF newPolygon(polygon);
+
+        int indexDifference = std::abs(firstHandle->pointIndex() - secondHandle->pointIndex());
+
+        if (indexDifference != polygon.size() - 1) {
+            int maxIndex = std::max(firstHandle->pointIndex(), secondHandle->pointIndex());
+            for (int i = maxIndex; i < polygon.size(); ++i)
+                newPolygon[i - maxIndex] = polygon[i];
+
+            for (int i = 0; i < maxIndex; ++i)
+                newPolygon[polygon.size() - maxIndex + i] = polygon[i];
+        }
+
+        setSelectedHandles(QSet<PointHandle*>());
+
+        mapDocument()->undoStack()->beginMacro(tr("Delete Segment"));
+        mapDocument()->undoStack()->push(new ChangePolygon(mapDocument(), mapObject, newPolygon, polygon));
+        mapDocument()->undoStack()->push(new TogglePolygonPolyline(mapObject));
+        mapDocument()->undoStack()->endMacro();
+    }
+}
+
+/**
+ * Returns the shortest distance between \a point and \a line.
+ */
+static qreal distanceOfPointToLine(const QLineF &line, QPointF point, QPointF &nearestPointOnLine)
+{
+    // implementation is based on QLineF::intersect
+    const QPointF d = line.p2() - line.p1();
+    const qreal denominator = d.x() * d.x() + d.y() * d.y();
+    if (denominator == 0) {
+        nearestPointOnLine = line.p1();
+        return QLineF(point, line.p1()).length();
+    }
+
+    const QPointF c = point - line.p1();
+    const qreal na = qBound<qreal>(0, (d.x() * c.x() + d.y() * c.y()) / denominator, 1);
+
+    nearestPointOnLine = line.p1() + d * na;
+    return QLineF(point, nearestPointOnLine).length();
+}
+
+void EditPolygonTool::updateHover(const QPointF &scenePos, QGraphicsSceneMouseEvent *event)
+{
+    PointHandle *hoveredHandle = nullptr;
+    InteractedSegment hoveredSegment;
+
+    switch (mAction) {
+    case Moving:    // while moving, optionally keep clicked handle hovered
+        if (mClickedHandle && mClickedHandle->isSelected())
+            hoveredHandle = mClickedHandle;
+        break;
+    case NoAction: {
+        QTransform transform;
+        if (event)
+            transform = viewTransform(event);
+        else if (QGraphicsView *view = mapScene()->views().first())
+            transform = view->transform();
+
+        QGraphicsItem *hoveredItem = mapScene()->itemAt(scenePos, transform);
+        hoveredHandle = qgraphicsitem_cast<PointHandle*>(hoveredItem);
+
+        if (!hoveredHandle) {
+            // check if we're hovering a line segment
+            MapRenderer *renderer = mapDocument()->renderer();
+
+            const qreal hoverDistance = 7 / renderer->painterScale();
+            qreal minDistance = std::numeric_limits<qreal>::max();
+
+            for (MapObject *object : mapDocument()->selectedObjects()) {
+                if (object->shape() != MapObject::Polygon && object->shape() != MapObject::Polyline)
+                    continue;
+
+                // Translate mouse position to local pixel coordinates...
+                const QPointF totalOffset = object->objectGroup()->totalOffset();
+                const QPointF objectScreenPos = renderer->pixelToScreenCoords(object->position());
+                const QTransform rotate = rotateAt(objectScreenPos, -object->rotation());
+                const QPointF rotatedMouseScenePos = rotate.map(scenePos - totalOffset);
+                const QPointF mousePixelCoords = renderer->screenToPixelCoords(rotatedMouseScenePos);
+                const QPointF localMousePixelCoords = mousePixelCoords - object->position();
+
+                const QPolygonF &polygon = object->polygon();
+                const int end = object->shape() == MapObject::Polygon ? polygon.size(): polygon.size() - 1;
+
+                for (int i = 0; i < end; ++i) {
+                    const QLineF line(polygon.at(i), polygon.at((i + 1) % polygon.size()));
+                    QPointF nearestPointOnLine;
+                    const qreal distance = distanceOfPointToLine(line, localMousePixelCoords, nearestPointOnLine);
+                    if (distance < hoverDistance && distance < minDistance) {
+                        minDistance = distance;
+                        hoveredSegment.object = object;
+                        hoveredSegment.index = i;
+                        hoveredSegment.nearestPointOnLine = nearestPointOnLine;
+                    }
+                }
+            }
+        }
+        break;
+    }
+    case Selecting:
+        break;      // no hover while selecting
+    }
+
+    QSet<PointHandle*> highlightedHandles;
+
+    if (hoveredHandle) {
+        highlightedHandles.insert(hoveredHandle);
+    } else if (hoveredSegment) {
+        auto handles = mHandles.value(hoveredSegment.object);
+        highlightedHandles.insert(handles.at(hoveredSegment.index));
+        highlightedHandles.insert(handles.at((hoveredSegment.index + 1) % handles.size()));
+    }
+
+    setHighlightedHandles(highlightedHandles);
+
+    mHoveredHandle = hoveredHandle;
+    mHoveredSegment = hoveredSegment;
 }

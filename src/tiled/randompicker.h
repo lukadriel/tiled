@@ -18,19 +18,25 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILED_INTERNAL_RANDOMPICKER_H
-#define TILED_INTERNAL_RANDOMPICKER_H
+#pragma once
 
 #include <QMap>
 
+#include <random>
+
 namespace Tiled {
-namespace Internal {
+
+inline std::default_random_engine &globalRandomEngine()
+{
+    static std::default_random_engine engine(std::random_device{}());
+    return engine;
+}
 
 /**
  * A class that helps pick random things that each have a probability
  * assigned.
  */
-template<typename T>
+template<typename T, typename Real = qreal>
 class RandomPicker
 {
 public:
@@ -38,10 +44,12 @@ public:
         : mSum(0.0)
     {}
 
-    void add(const T &value, qreal probability = 1.0)
+    void add(const T &value, Real probability = 1.0)
     {
-        mSum += probability;
-        mThresholds.insert(mSum, value);
+        if (probability > 0) {
+            mSum += probability;
+            mThresholds.insert(mSum, value);
+        }
     }
 
     bool isEmpty() const
@@ -51,14 +59,30 @@ public:
 
     const T &pick() const
     {
-        Q_ASSERT(!mThresholds.isEmpty());
+        Q_ASSERT(!isEmpty());
 
-        const qreal random = ((qreal)rand() / RAND_MAX) * mSum;
+        std::uniform_real_distribution<Real> dis(0, mSum);
+        const Real random = dis(globalRandomEngine());
         const auto it = mThresholds.lowerBound(random);
         if (it != mThresholds.end())
             return it.value();
         else
-            return (mThresholds.constEnd() - 1).value();
+            return (mThresholds.end() - 1).value();
+    }
+
+    //same as pick, but removes the selected element.
+    T take()
+    {
+        Q_ASSERT(!isEmpty());
+
+        std::uniform_real_distribution<Real> dis(0, mSum);
+        const Real random = dis(globalRandomEngine());
+        const auto it = mThresholds.lowerBound(random);
+
+        if (it != mThresholds.end())
+            return mThresholds.take(it.key());
+        else
+            return mThresholds.take((it - 1).key());
     }
 
     void clear()
@@ -68,11 +92,8 @@ public:
     }
 
 private:
-    qreal mSum;
-    QMap<qreal, T> mThresholds;
+    Real mSum;
+    QMap<Real, T> mThresholds;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // TILED_INTERNAL_RANDOMPICKER_H

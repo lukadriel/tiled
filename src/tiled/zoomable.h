@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ZOOMABLE_H
-#define ZOOMABLE_H
+#pragma once
 
 #include <QObject>
 #include <QRegExp>
@@ -30,7 +29,6 @@ class QPinchGesture;
 class QRegExpValidator;
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * This class represents something zoomable. Is has a zoom factor and methods
@@ -44,7 +42,7 @@ class Zoomable : public QObject
     Q_OBJECT
 
 public:
-    Zoomable(QObject *parent = 0);
+    Zoomable(QObject *parent = nullptr);
 
     void setScale(qreal scale);
     qreal scale() const { return mScale; }
@@ -75,24 +73,22 @@ public:
     { return mScale != qreal(1) && mScale < qreal(2); }
 
     void setZoomFactors(const QVector<qreal>& factors);
-    void connectToComboBox(QComboBox *comboBox);
+    void setComboBox(QComboBox *comboBox);
 
 public slots:
     void zoomIn();
     void zoomOut();
     void resetZoom();
 
-private slots:
-    void comboActivated(int index);
-    void comboEdited();
-
 signals:
     void scaleChanged(qreal scale);
 
 private:
+    void comboActivated(int index);
+    void comboEdited();
+
     void syncComboBox();
 
-private:
     qreal mScale;
     qreal mGestureStartScale;
     QVector<qreal> mZoomFactors;
@@ -101,7 +97,4 @@ private:
     QRegExpValidator *mComboValidator;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ZOOMABLE_H

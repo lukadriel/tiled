@@ -18,16 +18,13 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OBJECTGROUPITEM_H
-#define OBJECTGROUPITEM_H
+#pragma once
 
-#include <QGraphicsItem>
+#include "layeritem.h"
+
+#include "objectgroup.h"
 
 namespace Tiled {
-
-class ObjectGroup;
-
-namespace Internal {
 
 /**
  * A graphics item representing an object group in a QGraphicsView. It only
@@ -35,25 +32,23 @@ namespace Internal {
  *
  * @see MapObjectItem
  */
-class ObjectGroupItem : public QGraphicsItem
+class ObjectGroupItem : public LayerItem
 {
 public:
-    ObjectGroupItem(ObjectGroup *objectGroup);
+    ObjectGroupItem(ObjectGroup *objectGroup, QGraphicsItem *parent = nullptr);
 
-    ObjectGroup *objectGroup() const
-    { return mObjectGroup; }
+    ObjectGroup *objectGroup() const;
 
     // QGraphicsItem
-    QRectF boundingRect() const;
+    QRectF boundingRect() const override;
     void paint(QPainter *painter,
                const QStyleOptionGraphicsItem *option,
-               QWidget *widget = 0);
-
-private:
-    ObjectGroup *mObjectGroup;
+               QWidget *widget = nullptr) override;
 };
 
-} // namespace Internal
-} // namespace Tiled
+inline ObjectGroup *ObjectGroupItem::objectGroup() const
+{
+    return static_cast<ObjectGroup*>(layer());
+}
 
-#endif // OBJECTGROUPITEM_H
+} // namespace Tiled

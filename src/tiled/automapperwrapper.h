@@ -18,17 +18,16 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef AUTOMAPPERWRAPPER_H
-#define AUTOMAPPERWRAPPER_H
+#pragma once
 
 #include "automapper.h"
 
 #include <QUndoCommand>
 #include <QVector>
 
-namespace Tiled {
+#include <vector>
 
-namespace Internal {
+namespace Tiled {
 
 class MapDocument;
 
@@ -42,22 +41,20 @@ class MapDocument;
 class AutoMapperWrapper : public QUndoCommand
 {
 public:
-    AutoMapperWrapper(MapDocument *mapDocument, QVector<AutoMapper*> autoMapper,
+    AutoMapperWrapper(MapDocument *mapDocument,
+                      QVector<AutoMapper*> autoMappers,
                       QRegion *where);
-    ~AutoMapperWrapper();
+    ~AutoMapperWrapper() override;
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
-    void patchLayer(int layerIndex, TileLayer *layer);
+    void patchLayer(int layerIndex, const TileLayer &layer);
 
     MapDocument *mMapDocument;
-    QVector<TileLayer*> mLayersAfter;
-    QVector<TileLayer*> mLayersBefore;
+    std::vector<std::unique_ptr<TileLayer>> mLayersAfter;
+    std::vector<std::unique_ptr<TileLayer>> mLayersBefore;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // AUTOMAPPERWRAPPER_H

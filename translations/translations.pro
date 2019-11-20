@@ -8,7 +8,34 @@
 #
 
 # The list of supported translations
-LANGUAGES = en nl pt es de pt_BR ja fr it cs he lv zh zh_TW ru ar_DZ
+LANGUAGES = \
+    ar_DZ \
+    bg \
+    cs \
+    de \
+    en \
+    es \
+    fi \
+    fr \
+    he \
+    hu \
+    it \
+    ja \
+    ko \
+    nb \
+    nl \
+    pl \
+    pt \
+    pt_PT \
+    ru \
+    sv \
+    tr \
+    uk \
+    zh_CN \
+    zh_TW
+
+# Disabled languages because they're too outdated
+#    lv \
 
 # Helper function to adapt the slashes in a path to the system
 defineReplace(fixSlashes) {

@@ -20,6 +20,8 @@
 
 #include "tileselectionitem.h"
 
+#include "changeevents.h"
+#include "grouplayer.h"
 #include "map.h"
 #include "mapdocument.h"
 #include "maprenderer.h"
@@ -30,15 +32,20 @@
 #include <QStyleOptionGraphicsItem>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-TileSelectionItem::TileSelectionItem(MapDocument *mapDocument)
-    : mMapDocument(mapDocument)
+TileSelectionItem::TileSelectionItem(MapDocument *mapDocument,
+                                     QGraphicsItem *parent)
+    : QGraphicsObject(parent)
+    , mMapDocument(mapDocument)
 {
     setFlag(QGraphicsItem::ItemUsesExtendedStyleOption);
 
-    connect(mMapDocument, SIGNAL(selectedAreaChanged(QRegion,QRegion)),
-            this, SLOT(selectionChanged(QRegion,QRegion)));
+    connect(mapDocument, &MapDocument::changed,
+            this, &TileSelectionItem::documentChanged);
+    connect(mapDocument, &MapDocument::selectedAreaChanged,
+            this, &TileSelectionItem::selectionChanged);
+    connect(mapDocument, &MapDocument::currentLayerChanged,
+            this, &TileSelectionItem::currentLayerChanged);
 
     updateBoundingRect();
 }
@@ -61,6 +68,22 @@ void TileSelectionItem::paint(QPainter *painter,
                                 option->exposedRect);
 }
 
+void TileSelectionItem::documentChanged(const ChangeEvent &change)
+{
+    switch (change.type) {
+    case ChangeEvent::LayerChanged: {
+        const auto &layerChange = static_cast<const LayerChangeEvent&>(change);
+        if (layerChange.properties & LayerChangeEvent::OffsetProperty)
+            if (auto currentLayer = mMapDocument->currentLayer())
+                if (currentLayer->isParentOrSelf(layerChange.layer))
+                    setPos(currentLayer->totalOffset());
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 void TileSelectionItem::selectionChanged(const QRegion &newSelection,
                                          const QRegion &oldSelection)
 {
@@ -70,6 +93,12 @@ void TileSelectionItem::selectionChanged(const QRegion &newSelection,
     // Make sure changes within the bounding rect are updated
     const QRect changedArea = newSelection.xored(oldSelection).boundingRect();
     update(mMapDocument->renderer()->boundingRect(changedArea));
+}
+
+void TileSelectionItem::currentLayerChanged(Layer *layer)
+{
+    if (layer)
+        setPos(layer->totalOffset());
 }
 
 void TileSelectionItem::updateBoundingRect()

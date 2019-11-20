@@ -21,41 +21,22 @@
 #include "selectsametiletool.h"
 
 #include "brushitem.h"
+#include "map.h"
 #include "mapdocument.h"
-#include "changeselectedarea.h"
-
-#include <QApplication>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
-
-/**
- * Determines whether a cell matches specified one.
- */
-class MatchesSpecifiedCell
-{
-public:
-    MatchesSpecifiedCell(const Cell &cell) : mCell(cell) {}
-
-    bool operator() (const Cell &cell) const
-    {
-        return cell == mCell;
-    }
-
-private:
-    Cell mCell;
-};
 
 SelectSameTileTool::SelectSameTileTool(QObject *parent)
-    : AbstractTileTool(tr("Select Same Tile"),
-                       QIcon(QLatin1String(
-                               ":images/22x22/stock-tool-select-same-tiles.png")),
-                       QKeySequence(tr("S")),
-                       parent)
+    : AbstractTileSelectionTool("SelectSameTileTool",
+                                tr("Select Same Tile"),
+                                QIcon(QLatin1String(
+                                      ":images/22/stock-tool-by-color-select.png")),
+                                QKeySequence(Qt::Key_S),
+                                parent)
 {
 }
 
-void SelectSameTileTool::tilePositionChanged(const QPoint &tilePos)
+void SelectSameTileTool::tilePositionChanged(QPoint tilePos)
 {
     // Make sure that a tile layer is selected and contains current tile pos.
     TileLayer *tileLayer = currentTileLayer();
@@ -63,47 +44,17 @@ void SelectSameTileTool::tilePositionChanged(const QPoint &tilePos)
         return;
 
     QRegion resultRegion;
-    if (tileLayer->contains(tilePos)) {
-        const Cell matchCell = tileLayer->cellAt(tilePos);
-        MatchesSpecifiedCell condition(matchCell);
-        resultRegion = tileLayer->region(condition);
+    if (mapDocument()->map()->infinite() || tileLayer->contains(tilePos)) {
+        const Cell &matchCell = tileLayer->cellAt(tilePos);
+        resultRegion = tileLayer->region([&] (const Cell &cell) { return cell == matchCell; });
     }
-    mSelectedRegion = resultRegion;
-    brushItem()->setTileRegion(mSelectedRegion);
-}
-
-void SelectSameTileTool::mousePressed(QGraphicsSceneMouseEvent *event)
-{
-    if (event->button() != Qt::LeftButton)
-        return;
-
-    const Qt::KeyboardModifiers modifiers = event->modifiers();
-
-    MapDocument *document = mapDocument();
-
-    QRegion selection = document->selectedArea();
-
-    if (modifiers == Qt::ShiftModifier)
-        selection += mSelectedRegion;
-    else if (modifiers == Qt::ControlModifier)
-        selection -= mSelectedRegion;
-    else if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier))
-        selection &= mSelectedRegion;
-    else
-        selection = mSelectedRegion;
-
-    if (selection != document->selectedArea()) {
-        QUndoCommand *cmd = new ChangeSelectedArea(document, selection);
-        document->undoStack()->push(cmd);
-    }
-}
-
-void SelectSameTileTool::mouseReleased(QGraphicsSceneMouseEvent *)
-{
+    setSelectedRegion(resultRegion);
+    brushItem()->setTileRegion(selectedRegion());
 }
 
 void SelectSameTileTool::languageChanged()
 {
     setName(tr("Select Same Tile"));
-    setShortcut(QKeySequence(tr("S")));
+
+    AbstractTileSelectionTool::languageChanged();
 }

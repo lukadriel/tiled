@@ -19,8 +19,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LAYERDOCK_H
-#define LAYERDOCK_H
+#pragma once
 
 #include "mapdocument.h"
 
@@ -28,13 +27,12 @@
 #include <QTreeView>
 #include <QToolButton>
 
+class QAbstractProxyModel;
 class QLabel;
 class QModelIndex;
-class QTreeView;
 class QUndoStack;
 
 namespace Tiled {
-namespace Internal {
 
 class LayerView;
 
@@ -49,7 +47,7 @@ public:
     /**
      * Constructor.
      */
-    explicit LayerDock(QWidget *parent = 0);
+    explicit LayerDock(QWidget *parent = nullptr);
 
     /**
      * Sets the map for which the layers should be displayed.
@@ -57,19 +55,19 @@ public:
     void setMapDocument(MapDocument *mapDocument);
 
 protected:
-    void changeEvent(QEvent *e);
+    void changeEvent(QEvent *e) override;
 
-private slots:
+private:
     void updateOpacitySlider();
-    void layerChanged(int index);
+    void documentChanged(const ChangeEvent &change);
     void editLayerName();
     void sliderValueChanged(int opacity);
 
-private:
     void retranslateUi();
 
     QLabel *mOpacityLabel;
     QSlider *mOpacitySlider;
+    QToolButton *mNewLayerButton;
     LayerView *mLayerView;
     MapDocument *mMapDocument;
     bool mUpdatingSlider;
@@ -85,25 +83,31 @@ class LayerView : public QTreeView
     Q_OBJECT
 
 public:
-    explicit LayerView(QWidget *parent = 0);
+    explicit LayerView(QWidget *parent = nullptr);
 
-    QSize sizeHint() const;
+    QSize sizeHint() const override;
     void setMapDocument(MapDocument *mapDocument);
 
-protected:
-    void contextMenuEvent(QContextMenuEvent *event);
-    void keyPressEvent(QKeyEvent *event);
+    void editLayerModelIndex(const QModelIndex &layerModelIndex);
 
-private slots:
-    void currentRowChanged(const QModelIndex &index);
-    void indexPressed(const QModelIndex &index);
-    void currentLayerIndexChanged(int index);
+protected:
+    bool event(QEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void selectionChanged(const QItemSelection &selected,
+                          const QItemSelection &deselected) override;
 
 private:
-    MapDocument *mMapDocument;
+    void currentRowChanged(const QModelIndex &proxyIndex);
+    void indexPressed(const QModelIndex &proxyIndex);
+    void currentLayerChanged(Layer *layer);
+    void selectedLayersChanged();
+    void layerRemoved(Layer *layer);
+
+    MapDocument *mMapDocument = nullptr;
+    QAbstractProxyModel *mProxyModel;
+    bool mUpdatingSelectedLayers = false;
+    bool mUpdatingViewSelection = false;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // LAYERDOCK_H

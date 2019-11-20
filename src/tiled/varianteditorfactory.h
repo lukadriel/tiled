@@ -19,54 +19,67 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VARIANTEDITORFACTORY_H
-#define VARIANTEDITORFACTORY_H
+#pragma once
 
 #include <QtVariantEditorFactory>
 
+class QComboBox;
+
 namespace Tiled {
-namespace Internal {
 
 class FileEdit;
+class TextPropertyEdit;
+class TilesetParametersEdit;
 
 /**
  * Extension of the QtVariantEditorFactory that adds support for a FileEdit,
  * used for editing file references.
  *
- * It also adds support for a "suggestions" attribute for string values.
+ * It also adds support for "suggestions" and "multiline" attributes for string
+ * values.
  */
 class VariantEditorFactory : public QtVariantEditorFactory
 {
     Q_OBJECT
 
 public:
-    explicit VariantEditorFactory(QObject *parent = 0)
+    explicit VariantEditorFactory(QObject *parent = nullptr)
         : QtVariantEditorFactory(parent)
     {}
 
     ~VariantEditorFactory();
 
+signals:
+    void resetProperty(QtProperty *property);
+
 protected:
-    void connectPropertyManager(QtVariantPropertyManager *manager);
+    void connectPropertyManager(QtVariantPropertyManager *manager) override;
     QWidget *createEditor(QtVariantPropertyManager *manager,
                           QtProperty *property,
-                          QWidget *parent);
-    void disconnectPropertyManager(QtVariantPropertyManager *manager);
+                          QWidget *parent) override;
+    void disconnectPropertyManager(QtVariantPropertyManager *manager) override;
 
-private slots:
+private:
     void slotPropertyChanged(QtProperty *property, const QVariant &value);
     void slotPropertyAttributeChanged(QtProperty *property,
                                       const QString &attribute,
                                       const QVariant &value);
-    void slotSetValue(const QString &value);
+    void fileEditFileUrlChanged(const QUrl &value);
+    void textPropertyEditTextChanged(const QString &value);
+    void comboBoxPropertyEditTextChanged(const QString &value);
     void slotEditorDestroyed(QObject *object);
 
-private:
-    QMap<QtProperty *, QList<FileEdit *> > mCreatedEditors;
-    QMap<FileEdit *, QtProperty *> mEditorToProperty;
+    QMap<QtProperty *, QList<FileEdit *> > mCreatedFileEdits;
+    QMap<FileEdit *, QtProperty *> mFileEditToProperty;
+
+    QMap<QtProperty *, QList<TilesetParametersEdit *> > mCreatedTilesetEdits;
+    QMap<TilesetParametersEdit *, QtProperty *> mTilesetEditToProperty;
+
+    QMap<QtProperty *, QList<TextPropertyEdit *> > mCreatedTextPropertyEdits;
+    QMap<TextPropertyEdit *, QtProperty *> mTextPropertyEditToProperty;
+
+    QMap<QtProperty *, QList<QComboBox *> > mCreatedComboBoxes;
+    QMap<QComboBox *, QtProperty *> mComboBoxToProperty;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // VARIANTEDITORFACTORY_H

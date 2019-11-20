@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILED_INTERNAL_TILESTAMPMODEL_H
-#define TILED_INTERNAL_TILESTAMPMODEL_H
+#pragma once
 
 #include "tilestamp.h"
 
@@ -29,7 +28,6 @@ namespace Tiled {
 
 class Map;
 
-namespace Internal {
 
 struct TileStampVariation;
 
@@ -38,7 +36,7 @@ class TileStampModel : public QAbstractItemModel
     Q_OBJECT
 
 public:
-    TileStampModel(QObject *parent = 0);
+    TileStampModel(QObject *parent = nullptr);
 
     QModelIndex index(int row, int column,
                       const QModelIndex &parent = QModelIndex()) const override;
@@ -104,7 +102,4 @@ inline const QList<TileStamp> &TileStampModel::stamps() const
     return mStamps;
 }
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // TILED_INTERNAL_TILESTAMPMODEL_H

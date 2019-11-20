@@ -26,8 +26,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TILED_GIDMAPPER_H
-#define TILED_GIDMAPPER_H
+#pragma once
 
 #include "map.h"
 #include "tilelayer.h"
@@ -45,17 +44,17 @@ public:
     GidMapper();
     GidMapper(const QVector<SharedTileset> &tilesets);
 
-    void insert(unsigned firstGid, Tileset *tileset);
+    void insert(unsigned firstGid, const SharedTileset &tileset);
     void clear();
     bool isEmpty() const;
 
     Cell gidToCell(unsigned gid, bool &ok) const;
     unsigned cellToGid(const Cell &cell) const;
 
-    void setTilesetWidth(const Tileset *tileset, int width);
-
     QByteArray encodeLayerData(const TileLayer &tileLayer,
-                               Map::LayerDataFormat format) const;
+                               Map::LayerDataFormat format,
+                               QRect bounds = QRect(),
+                               int compressionLevel = -1) const;
 
     enum DecodeError {
         NoError = 0,
@@ -66,13 +65,13 @@ public:
 
     DecodeError decodeLayerData(TileLayer &tileLayer,
                                 const QByteArray &layerData,
-                                Map::LayerDataFormat format) const;
+                                Map::LayerDataFormat format,
+                                QRect bounds) const;
 
     unsigned invalidTile() const;
 
 private:
-    QMap<unsigned, Tileset*> mFirstGidToTileset;
-    QMap<const Tileset*, int> mTilesetColumnCounts;
+    QMap<unsigned, SharedTileset> mFirstGidToTileset;
 
     mutable unsigned mInvalidTile;
 };
@@ -81,7 +80,7 @@ private:
 /**
  * Insert the given \a tileset with \a firstGid as its first global ID.
  */
-inline void GidMapper::insert(unsigned firstGid, Tileset *tileset)
+inline void GidMapper::insert(unsigned firstGid, const SharedTileset &tileset)
 {
     mFirstGidToTileset.insert(firstGid, tileset);
 }
@@ -112,5 +111,3 @@ inline unsigned GidMapper::invalidTile() const
 }
 
 } // namespace Tiled
-
-#endif // TILED_GIDMAPPER_H

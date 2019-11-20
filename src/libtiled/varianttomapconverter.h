@@ -19,10 +19,10 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VARIANTTOMAPCONVERTER_H
-#define VARIANTTOMAPCONVERTER_H
+#pragma once
 
 #include "gidmapper.h"
+#include "mapobject.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -30,11 +30,14 @@
 
 namespace Tiled {
 
+class GroupLayer;
 class Layer;
 class Map;
 class ObjectGroup;
+class ObjectTemplate;
 class Properties;
 class Tileset;
+class WangColor;
 
 /**
  * Converts a QVariant to a Map instance. Meant to be used together with
@@ -46,7 +49,10 @@ class TILEDSHARED_EXPORT VariantToMapConverter
     Q_DECLARE_TR_FUNCTIONS(MapReader)
 
 public:
-    VariantToMapConverter() : mMap(0) {}
+    VariantToMapConverter()
+        : mMap(nullptr)
+        , mReadingExternalTileset(false)
+    {}
 
     /**
      * Tries to convert the given \a variant to a Map instance. The \a mapDir
@@ -55,7 +61,24 @@ public:
      * Returns 0 in case of an error. The error can be obstained using
      * errorString().
      */
-    Map *toMap(const QVariant &variant, const QDir &mapDir);
+    std::unique_ptr<Map> toMap(const QVariant &variant, const QDir &mapDir);
+
+    /**
+     * Tries to convert the given \a variant to a Tileset instance. The
+     * \a directory is necessary to resolve any relative references to external
+     * images.
+     *
+     * Returns 0 in case of an error. The error can be obstained using
+     * errorString().
+     */
+    SharedTileset toTileset(const QVariant &variant, const QDir &directory);
+
+    /**
+     * Tries to convert the given \a variant to an ObjectTemplate instance. The
+     * \a directory is necessary to resolve any relative references to external
+     * tilesets.
+     */
+    std::unique_ptr<ObjectTemplate> toObjectTemplate(const QVariant &variant, const QDir &directory);
 
     /**
      * Returns the last error, if any.
@@ -63,21 +86,36 @@ public:
     QString errorString() const { return mError; }
 
 private:
-    Properties toProperties(const QVariant &variant);
+    Properties toProperties(const QVariant &propertiesVariant,
+                            const QVariant &propertyTypesVariant) const;
     SharedTileset toTileset(const QVariant &variant);
-    Layer *toLayer(const QVariant &variant);
-    TileLayer *toTileLayer(const QVariantMap &variantMap);
-    ObjectGroup *toObjectGroup(const QVariantMap &variantMap);
-    ImageLayer *toImageLayer(const QVariantMap &variantMap);
+    std::unique_ptr<WangSet> toWangSet(const QVariantMap &variantMap, Tileset *tileset);
+    QSharedPointer<WangColor> toWangColor(const QVariantMap &variantMap, bool isEdge);
+    std::unique_ptr<ObjectTemplate> toObjectTemplate(const QVariant &variant);
+    std::unique_ptr<Layer> toLayer(const QVariant &variant);
+    std::unique_ptr<TileLayer> toTileLayer(const QVariantMap &variantMap);
+    std::unique_ptr<ObjectGroup> toObjectGroup(const QVariantMap &variantMap);
+    std::unique_ptr<MapObject> toMapObject(const QVariantMap &variantMap);
+    std::unique_ptr<ImageLayer> toImageLayer(const QVariantMap &variantMap);
+    std::unique_ptr<GroupLayer> toGroupLayer(const QVariantMap &variantMap);
 
     QPolygonF toPolygon(const QVariant &variant) const;
+    TextData toTextData(const QVariantMap &variant) const;
+
+    void readMapEditorSettings(Map &map, const QVariantMap &editorSettings);
+    void readTilesetEditorSettings(Tileset &tileset, const QVariantMap &editorSettings);
+    bool readTileLayerData(TileLayer &tileLayer,
+                           const QVariant &dataVariant,
+                           Map::LayerDataFormat layerDataFormat,
+                           QRect bounds);
+
+    Properties extractProperties(const QVariantMap &variantMap) const;
 
     Map *mMap;
-    QDir mMapDir;
+    QDir mDir;
+    bool mReadingExternalTileset;
     GidMapper mGidMapper;
     QString mError;
 };
 
 } // namespace Tiled
-
-#endif // VARIANTTOMAPCONVERTER_H

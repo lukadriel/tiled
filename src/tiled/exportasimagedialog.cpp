@@ -21,12 +21,13 @@
 #include "exportasimagedialog.h"
 #include "ui_exportasimagedialog.h"
 
+#include "imagelayer.h"
 #include "map.h"
 #include "mapdocument.h"
 #include "mapobject.h"
 #include "mapobjectitem.h"
 #include "maprenderer.h"
-#include "imagelayer.h"
+#include "minimaprenderer.h"
 #include "objectgroup.h"
 #include "preferences.h"
 #include "tilelayer.h"
@@ -43,7 +44,6 @@ static const char * const DRAW_GRID_KEY = "SaveAsImage/DrawGrid";
 static const char * const INCLUDE_BACKGROUND_COLOR = "SaveAsImage/IncludeBackgroundColor";
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 QString ExportAsImageDialog::mPath;
 
@@ -57,7 +57,10 @@ ExportAsImageDialog::ExportAsImageDialog(MapDocument *mapDocument,
     , mCurrentScale(currentScale)
 {
     mUi->setupUi(this);
+    resize(Utils::dpiScaled(size()));
+#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+#endif
 
     QPushButton *saveButton = mUi->buttonBox->button(QDialogButtonBox::Save);
     saveButton->setText(tr("Export"));
@@ -100,9 +103,9 @@ ExportAsImageDialog::ExportAsImageDialog(MapDocument *mapDocument,
     mUi->drawTileGrid->setChecked(drawTileGrid);
     mUi->includeBackgroundColor->setChecked(includeBackgroundColor);
 
-    connect(mUi->browseButton, SIGNAL(clicked()), SLOT(browse()));
-    connect(mUi->fileNameEdit, SIGNAL(textChanged(QString)),
-            this, SLOT(updateAcceptEnabled()));
+    connect(mUi->browseButton, &QAbstractButton::clicked, this, &ExportAsImageDialog::browse);
+    connect(mUi->fileNameEdit, &QLineEdit::textChanged,
+            this, &ExportAsImageDialog::updateAcceptEnabled);
 
 
     Utils::restoreGeometry(this);
@@ -112,11 +115,6 @@ ExportAsImageDialog::~ExportAsImageDialog()
 {
     Utils::saveGeometry(this);
     delete mUi;
-}
-
-static bool objectLessThan(const MapObject *a, const MapObject *b)
-{
-    return a->y() < b->y();
 }
 
 static bool smoothTransform(qreal scale)
@@ -149,30 +147,54 @@ void ExportAsImageDialog::accept()
     const bool drawTileGrid = mUi->drawTileGrid->isChecked();
     const bool includeBackgroundColor = mUi->includeBackgroundColor->isChecked();
 
+    MiniMapRenderer miniMapRenderer(mMapDocument->map());
+
+    MiniMapRenderer::RenderFlags renderFlags(MiniMapRenderer::DrawTileLayers |
+                                             MiniMapRenderer::DrawMapObjects |
+                                             MiniMapRenderer::DrawImageLayers);
+
+    if (visibleLayersOnly)
+        renderFlags |= MiniMapRenderer::IgnoreInvisibleLayer;
+    if (drawTileGrid)
+        renderFlags |= MiniMapRenderer::DrawGrid;
+    if (includeBackgroundColor)
+        renderFlags |= MiniMapRenderer::DrawBackground;
+    if (useCurrentScale && smoothTransform(mCurrentScale))
+        renderFlags |= MiniMapRenderer::SmoothPixmapTransform;
+
     MapRenderer *renderer = mMapDocument->renderer();
 
-    // Remember the current render flags
-    const Tiled::RenderFlags renderFlags = renderer->flags();
+    QSize imageSize = renderer->mapBoundingRect().size();
 
-    renderer->setFlag(ShowTileObjectOutlines, false);
+    QMargins margins = mMapDocument->map()->computeLayerOffsetMargins();
+    imageSize.setWidth(imageSize.width() + margins.left() + margins.right());
+    imageSize.setHeight(imageSize.height() + margins.top() + margins.bottom());
 
-    QSize mapSize = renderer->mapSize();
     if (useCurrentScale)
-        mapSize *= mCurrentScale;
-
-    QImage image;
+        imageSize *= mCurrentScale;
 
     try {
-        image = QImage(mapSize, QImage::Format_ARGB32_Premultiplied);
+        QImage image(imageSize, QImage::Format_ARGB32_Premultiplied);
 
-        if (includeBackgroundColor) {
-            if (mMapDocument->map()->backgroundColor().isValid())
-                image.fill(mMapDocument->map()->backgroundColor());
-            else
-                image.fill(Qt::gray);
-        } else {
-            image.fill(Qt::transparent);
+        if (image.isNull()) {
+            const size_t gigabyte = 1073741824;
+            const size_t memory = size_t(imageSize.width()) * size_t(imageSize.height()) * 4;
+            const double gigabytes = static_cast<double>(memory) / gigabyte;
+
+            QMessageBox::critical(this,
+                                  tr("Image too Big"),
+                                  tr("The resulting image would be %1 x %2 pixels and take %3 GB of memory. "
+                                     "Tiled is unable to create such an image. Try reducing the zoom level.")
+                                  .arg(imageSize.width())
+                                  .arg(imageSize.height())
+                                  .arg(gigabytes, 0, 'f', 2));
+            return;
         }
+
+        miniMapRenderer.renderToImage(image, renderFlags);
+
+        image.save(fileName);
+
     } catch (const std::bad_alloc &) {
         QMessageBox::critical(this,
                               tr("Out of Memory"),
@@ -181,84 +203,6 @@ void ExportAsImageDialog::accept()
         return;
     }
 
-    if (image.isNull()) {
-        const size_t gigabyte = 1073741824;
-        const size_t memory = size_t(mapSize.width()) * size_t(mapSize.height()) * 4;
-        const double gigabytes = (double) memory / gigabyte;
-
-        QMessageBox::critical(this,
-                              tr("Image too Big"),
-                              tr("The resulting image would be %1 x %2 pixels and take %3 GB of memory. "
-                                 "Tiled is unable to create such an image. Try reducing the zoom level.")
-                              .arg(mapSize.width())
-                              .arg(mapSize.height())
-                              .arg(gigabytes, 0, 'f', 2));
-        return;
-    }
-
-    QPainter painter(&image);
-
-    if (useCurrentScale) {
-        if (smoothTransform(mCurrentScale))
-            painter.setRenderHints(QPainter::SmoothPixmapTransform);
-
-        painter.setTransform(QTransform::fromScale(mCurrentScale,
-                                                   mCurrentScale));
-        renderer->setPainterScale(mCurrentScale);
-    } else {
-        renderer->setPainterScale(1);
-    }
-
-    foreach (const Layer *layer, mMapDocument->map()->layers()) {
-        if (visibleLayersOnly && !layer->isVisible())
-            continue;
-
-        painter.setOpacity(layer->opacity());
-
-        const TileLayer *tileLayer = dynamic_cast<const TileLayer*>(layer);
-        const ObjectGroup *objGroup = dynamic_cast<const ObjectGroup*>(layer);
-        const ImageLayer *imageLayer = dynamic_cast<const ImageLayer*>(layer);
-
-        if (tileLayer) {
-            renderer->drawTileLayer(&painter, tileLayer);
-        } else if (objGroup) {
-            QList<MapObject*> objects = objGroup->objects();
-
-            if (objGroup->drawOrder() == ObjectGroup::TopDownOrder)
-                qStableSort(objects.begin(), objects.end(), objectLessThan);
-
-            foreach (const MapObject *object, objects) {
-                if (object->isVisible()) {
-                    if (object->rotation() != qreal(0)) {
-                        QPointF origin = renderer->pixelToScreenCoords(object->position());
-                        painter.save();
-                        painter.translate(origin);
-                        painter.rotate(object->rotation());
-                        painter.translate(-origin);
-                    }
-
-                    const QColor color = MapObjectItem::objectColor(object);
-                    renderer->drawMapObject(&painter, object, color);
-
-                    if (object->rotation() != qreal(0))
-                        painter.restore();
-                }
-            }
-        } else if (imageLayer) {
-            renderer->drawImageLayer(&painter, imageLayer);
-        }
-    }
-
-    if (drawTileGrid) {
-        Preferences *prefs = Preferences::instance();
-        renderer->drawGrid(&painter, QRectF(QPointF(), renderer->mapSize()),
-                           prefs->gridColor());
-    }
-
-    // Restore the previous render flags
-    renderer->setFlags(renderFlags);
-
-    image.save(fileName);
     mPath = QFileInfo(fileName).path();
 
     // Store settings for next time
@@ -278,7 +222,7 @@ void ExportAsImageDialog::browse()
     const QString filter = Utils::writableImageFormatsFilter();
     QString f = QFileDialog::getSaveFileName(this, tr("Image"),
                                              mUi->fileNameEdit->text(),
-                                             filter, 0,
+                                             filter, nullptr,
                                              QFileDialog::DontConfirmOverwrite);
     if (!f.isEmpty()) {
         mUi->fileNameEdit->setText(f);

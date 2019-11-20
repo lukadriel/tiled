@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RAISELOWERHELPER_H
-#define RAISELOWERHELPER_H
+#pragma once
 
 #include "mapscene.h"
 #include "rangeset.h"
@@ -32,10 +31,7 @@ namespace Tiled {
 
 class ObjectGroup;
 
-namespace Internal {
-
 class MapDocument;
-class MapObjectItem;
 class MapScene;
 
 /**
@@ -51,7 +47,7 @@ public:
     RaiseLowerHelper(MapScene *mapScene)
         : mMapDocument(mapScene->mapDocument())
         , mMapScene(mapScene)
-        , mObjectGroup(0)
+        , mObjectGroup(nullptr)
     {}
 
     void raise();
@@ -59,7 +55,7 @@ public:
     void raiseToTop();
     void lowerToBottom();
 
-    static ObjectGroup *sameObjectGroup(const QSet<MapObjectItem*> &items);
+    static ObjectGroup *sameObjectGroup(const QList<MapObject*> &objects);
 
 private:
     bool initContext();
@@ -70,11 +66,8 @@ private:
 
     // Context
     ObjectGroup *mObjectGroup;
-    QList<MapObjectItem*> mRelatedObjects;
+    QList<MapObject*> mRelatedObjects;
     RangeSet<int> mSelectionRanges;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // RAISELOWERHELPER_H

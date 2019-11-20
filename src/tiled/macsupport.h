@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MACSUPPORT_H
-#define MACSUPPORT_H
+#pragma once
 
 #include "mainwindow.h"
 
@@ -34,7 +33,5 @@ public:
     /**
      * Adds fullscreen button to window for Lion.
      */
-    static void addFullscreen(Tiled::Internal::MainWindow *window);
+    static void addFullscreen(Tiled::MainWindow *window);
 };
-
-#endif // MACSUPPORT_H

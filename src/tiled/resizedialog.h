@@ -18,40 +18,41 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RESIZEDIALOG_H
-#define RESIZEDIALOG_H
+#pragma once
 
 #include <QDialog>
+
+#include <functional>
 
 namespace Ui {
 class ResizeDialog;
 }
 
 namespace Tiled {
-namespace Internal {
 
 class ResizeDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    ResizeDialog(QWidget *parent = 0);
+    ResizeDialog(QWidget *parent = nullptr);
 
     ~ResizeDialog();
 
-    void setOldSize(const QSize &size);
+    void setOldSize(QSize size);
 
-    const QSize &newSize() const;
-    const QPoint &offset() const;
+    QSize newSize() const;
+    QPoint offset() const;
 
-private slots:
-    void updateOffsetBounds(const QRect &bounds);
+    bool removeObjects() const;
+
+    void setMiniMapRenderer(std::function<QImage (QSize)> renderer);
 
 private:
+    void removeObjectsToggled(bool removeObjects);
+    void updateOffsetBounds(const QRect &bounds);
+
     Ui::ResizeDialog *mUi;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // RESIZEDIALOG_H

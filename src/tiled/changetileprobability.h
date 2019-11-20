@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGETILEPROBABILITY_H
-#define CHANGETILEPROBABILITY_H
+#pragma once
 
 #include <QUndoCommand>
 
@@ -27,29 +26,29 @@ namespace Tiled {
 
 class Tile;
 
-namespace Internal {
-
-class MapDocument;
+class TilesetDocument;
 
 class ChangeTileProbability : public QUndoCommand
 {
 public:
-    ChangeTileProbability(MapDocument *mapDocument,
-                          Tile *tile,
-                          float probability);
+    ChangeTileProbability(TilesetDocument *tilesetDocument,
+                          const QList<Tile*> &tiles,
+                          qreal probability);
 
-    void undo() { swap(); }
-    void redo() { swap(); }
+    ChangeTileProbability(TilesetDocument *tilesetDocument,
+                          const QList<Tile*> &tiles,
+                          const QList<qreal> &probabilities,
+                          QUndoCommand *parent = nullptr);
+
+    void undo() override { swap(); }
+    void redo() override { swap(); }
 
 private:
     void swap();
 
-    MapDocument *mMapDocument;
-    Tile *mTile;
-    float mProbability;
+    TilesetDocument *mTilesetDocument;
+    QList<Tile*> mTiles;
+    QList<qreal> mProbabilities;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // CHANGETILEPROBABILITY_H

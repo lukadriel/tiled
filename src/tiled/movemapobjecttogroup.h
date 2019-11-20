@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MOVEMAPOBJECTTOGROUP_H
-#define MOVEMAPOBJECTTOGROUP_H
+#pragma once
 
 #include <QUndoCommand>
 
@@ -28,28 +27,21 @@ namespace Tiled {
 class MapObject;
 class ObjectGroup;
 
-namespace Internal {
-
-class MapDocument;
+class AddMapObjects;
+class Document;
+class RemoveMapObjects;
 
 class MoveMapObjectToGroup : public QUndoCommand
 {
 public:
-    MoveMapObjectToGroup(MapDocument *mapDocument,
+    MoveMapObjectToGroup(Document *document,
                          MapObject *mapObject,
                          ObjectGroup *objectGroup);
-
-    void undo();
-    void redo();
+    ~MoveMapObjectToGroup() override;
 
 private:
-    MapDocument *mMapDocument;
-    MapObject *mMapObject;
-    ObjectGroup *mOldObjectGroup;
-    ObjectGroup *mNewObjectGroup;
+    RemoveMapObjects *mRemoveMapObject;
+    AddMapObjects *mAddMapObject;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // MOVEMAPOBJECTTOGROUP_H

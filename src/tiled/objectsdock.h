@@ -18,22 +18,18 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OBJECTSDOCK_H
-#define OBJECTSDOCK_H
+#pragma once
 
 #include <QDockWidget>
-#include <QTreeView>
+#include <QMap>
 
-class QTreeView;
+class QMenu;
 
 namespace Tiled {
 
-class ObjectGroup;
-
-namespace Internal {
-
+class Document;
+class FilterEdit;
 class MapDocument;
-class MapObjectModel;
 class ObjectsView;
 
 class ObjectsDock : public QDockWidget
@@ -41,65 +37,34 @@ class ObjectsDock : public QDockWidget
     Q_OBJECT
 
 public:
-    ObjectsDock(QWidget *parent = 0);
+    ObjectsDock(QWidget *parent = nullptr);
 
     void setMapDocument(MapDocument *mapDoc);
 
 protected:
-    void changeEvent(QEvent *e);
+    void changeEvent(QEvent *e) override;
 
-private slots:
+private:
     void updateActions();
     void aboutToShowMoveToMenu();
     void triggeredMoveToMenu(QAction *action);
     void objectProperties();
-    void documentAboutToClose(MapDocument *mapDocument);
+    void documentAboutToClose(Document *document);
+    void moveObjectsUp();
+    void moveObjectsDown();
 
-private:
     void retranslateUi();
-
-    void saveExpandedGroups(MapDocument *mapDoc);
-    void restoreExpandedGroups(MapDocument *mapDoc);
 
     QAction *mActionNewLayer;
     QAction *mActionObjectProperties;
     QAction *mActionMoveToGroup;
+    QAction *mActionMoveUp;
+    QAction *mActionMoveDown;
 
+    FilterEdit *mFilterEdit;
     ObjectsView *mObjectsView;
     MapDocument *mMapDocument;
-    QMap<MapDocument*, QList<ObjectGroup*> > mExpandedGroups;
     QMenu *mMoveToMenu;
 };
 
-class ObjectsView : public QTreeView
-{
-    Q_OBJECT
-
-public:
-    ObjectsView(QWidget *parent = 0);
-
-    QSize sizeHint() const;
-
-    void setMapDocument(MapDocument *mapDoc);
-
-    MapObjectModel *model() const;
-
-protected:
-    void selectionChanged(const QItemSelection &selected,
-                          const QItemSelection &deselected);
-
-private slots:
-    void onPressed(const QModelIndex &index);
-    void onActivated(const QModelIndex &index);
-    void onSectionResized(int logicalIndex);
-    void selectedObjectsChanged();
-
-private:
-    MapDocument *mMapDocument;
-    bool mSynching;
-};
-
-} // namespace Internal
 } // namespace Tiled
-
-#endif // OBJECTSDOCK_H

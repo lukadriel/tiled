@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ROTATEMAPOBJECT_H
-#define ROTATEMAPOBJECT_H
+#pragma once
 
 #include <QUndoCommand>
 
@@ -27,33 +26,29 @@ namespace Tiled {
 
 class MapObject;
 
-namespace Internal {
-
-class MapDocument;
+class Document;
 
 class RotateMapObject : public QUndoCommand
 {
 public:
-    RotateMapObject(MapDocument *mapDocument,
+    RotateMapObject(Document *document,
                     MapObject *mapObject,
                     qreal oldRotation);
 
-    RotateMapObject(MapDocument *mapDocument,
+    RotateMapObject(Document *document,
                     MapObject *mapObject,
                     qreal newRotation,
                     qreal oldRotation);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
-    MapDocument *mMapDocument;
+    Document *mDocument;
     MapObject *mMapObject;
     qreal mOldRotation;
     qreal mNewRotation;
+    bool mOldChangeState;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ROTATEMAPOBJECT_H

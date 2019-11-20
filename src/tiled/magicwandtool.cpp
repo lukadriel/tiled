@@ -24,28 +24,21 @@
 #include "magicwandtool.h"
 
 #include "brushitem.h"
-#include "filltiles.h"
 #include "tilepainter.h"
-#include "tile.h"
-#include "mapscene.h"
-#include "mapdocument.h"
-#include "changeselectedarea.h"
-
-#include <QApplication>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 MagicWandTool::MagicWandTool(QObject *parent)
-    : AbstractTileTool(tr("Magic Wand"),
-                       QIcon(QLatin1String(
-                               ":images/22x22/stock-tool-fuzzy-select-22.png")),
-                       QKeySequence(tr("W")),
-                       parent)
+    : AbstractTileSelectionTool("MagicWandTool",
+                                tr("Magic Wand"),
+                                QIcon(QLatin1String(
+                                      ":images/22/stock-tool-fuzzy-select-22.png")),
+                                QKeySequence(Qt::Key_W),
+                                parent)
 {
 }
 
-void MagicWandTool::tilePositionChanged(const QPoint &tilePos)
+void MagicWandTool::tilePositionChanged(QPoint tilePos)
 {
     // Make sure that a tile layer is selected
     TileLayer *tileLayer = currentTileLayer();
@@ -53,42 +46,13 @@ void MagicWandTool::tilePositionChanged(const QPoint &tilePos)
         return;
 
     TilePainter regionComputer(mapDocument(), tileLayer);
-    mSelectedRegion = regionComputer.computeFillRegion(tilePos);
-    brushItem()->setTileRegion(mSelectedRegion);
-}
-
-void MagicWandTool::mousePressed(QGraphicsSceneMouseEvent *event)
-{
-    if (event->button() != Qt::LeftButton)
-        return;
-
-    const Qt::KeyboardModifiers modifiers = event->modifiers();
-
-    MapDocument *document = mapDocument();
-
-    QRegion selection = document->selectedArea();
-
-    if (modifiers == Qt::ShiftModifier)
-        selection += mSelectedRegion;
-    else if (modifiers == Qt::ControlModifier)
-        selection -= mSelectedRegion;
-    else if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier))
-        selection &= mSelectedRegion;
-    else
-        selection = mSelectedRegion;
-
-    if (selection != document->selectedArea()) {
-        QUndoCommand *cmd = new ChangeSelectedArea(document, selection);
-        document->undoStack()->push(cmd);
-    }
-}
-
-void MagicWandTool::mouseReleased(QGraphicsSceneMouseEvent *)
-{
+    setSelectedRegion(regionComputer.computeFillRegion(tilePos));
+    brushItem()->setTileRegion(selectedRegion());
 }
 
 void MagicWandTool::languageChanged()
 {
     setName(tr("Magic Wand"));
-    setShortcut(QKeySequence(tr("W")));
+
+    AbstractTileSelectionTool::languageChanged();
 }

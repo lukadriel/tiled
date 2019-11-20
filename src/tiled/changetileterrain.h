@@ -18,10 +18,9 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGETILETERRAIN_H
-#define CHANGETILETERRAIN_H
+#pragma once
 
-#include <QMap>
+#include <QHash>
 #include <QUndoCommand>
 
 #include "undocommands.h"
@@ -31,9 +30,7 @@ namespace Tiled {
 class Tile;
 class Tileset;
 
-namespace Internal {
-
-class MapDocument;
+class TilesetDocument;
 
 class ChangeTileTerrain : public QUndoCommand
 {
@@ -47,7 +44,7 @@ public:
         unsigned to;
     };
 
-    typedef QMap<Tile *, Change> Changes;
+    typedef QHash<Tile *, Change> Changes;
 
     /**
      * Constructs an empty command that changes no terrain. When merged into
@@ -59,29 +56,27 @@ public:
     /**
      * Changes the terrain of \a tile.
      */
-    ChangeTileTerrain(MapDocument *mapDocument, Tile *tile, unsigned terrain);
+    ChangeTileTerrain(TilesetDocument *tilesetDocument, Tile *tile, unsigned terrain);
 
     /**
      * Applies the given terrain \a changes.
      */
-    ChangeTileTerrain(MapDocument *mapDocument, const Changes &changes);
+    ChangeTileTerrain(TilesetDocument *tilesetDocument, const Changes &changes,
+                      QUndoCommand *parent = nullptr);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
-    int id() const { return Cmd_ChangeTileTerrain; }
-    bool mergeWith(const QUndoCommand *other);
+    int id() const override { return Cmd_ChangeTileTerrain; }
+    bool mergeWith(const QUndoCommand *other) override;
 
 private:
     void initText();
 
-    MapDocument *mMapDocument;
+    TilesetDocument *mTilesetDocument;
     Tileset *mTileset;
     Changes mChanges;
     bool mMergeable;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // CHANGETILETERRAIN_H

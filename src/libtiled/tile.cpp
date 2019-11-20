@@ -33,39 +33,31 @@
 
 using namespace Tiled;
 
-Tile::Tile(const QPixmap &image,
-           int id,
-           Tileset *tileset):
+Tile::Tile(int id, Tileset *tileset):
     Object(TileType),
     mId(id),
     mTileset(tileset),
-    mImage(image),
+    mImageStatus(LoadingReady),
     mTerrain(-1),
-    mProbability(1.f),
-    mObjectGroup(0),
+    mProbability(1.0),
     mCurrentFrameIndex(0),
     mUnusedTime(0)
 {}
 
-Tile::Tile(const QPixmap &image,
-           const QString &imageSource,
-           int id,
-           Tileset *tileset):
+Tile::Tile(const QPixmap &image, int id, Tileset *tileset):
     Object(TileType),
     mId(id),
     mTileset(tileset),
     mImage(image),
-    mImageSource(imageSource),
+    mImageStatus(image.isNull() ? LoadingError : LoadingReady),
     mTerrain(-1),
-    mProbability(1.f),
-    mObjectGroup(0),
+    mProbability(1.0),
     mCurrentFrameIndex(0),
     mUnusedTime(0)
 {}
 
 Tile::~Tile()
 {
-    delete mObjectGroup;
 }
 
 /**
@@ -77,17 +69,18 @@ QSharedPointer<Tileset> Tile::sharedTileset() const
 }
 
 /**
- * Returns the image for rendering this tile, taking into account tile
- * animations.
+ * Returns the tile to render when taking into account tile animations.
+ *
+ * \warning May return null when the tileset is invalid or the image could
+ *          not be loaded.
  */
-const QPixmap &Tile::currentFrameImage() const
+const Tile *Tile::currentFrameTile() const
 {
     if (isAnimated()) {
         const Frame &frame = mFrames.at(mCurrentFrameIndex);
-        return mTileset->tileAt(frame.tileId)->image();
-    } else {
-        return mImage;
+        return mTileset->findTile(frame.tileId);
     }
+    return this;
 }
 
 /**
@@ -123,29 +116,24 @@ void Tile::setTerrain(unsigned terrain)
  * The Tile takes ownership over the ObjectGroup and it can't also be part of
  * a map.
  */
-void Tile::setObjectGroup(ObjectGroup *objectGroup)
+void Tile::setObjectGroup(std::unique_ptr<ObjectGroup> objectGroup)
 {
     Q_ASSERT(!objectGroup || !objectGroup->map());
 
     if (mObjectGroup == objectGroup)
         return;
 
-    delete mObjectGroup;
-    mObjectGroup = objectGroup;
+    mObjectGroup = std::move(objectGroup);
 }
 
 /**
  * Swaps the object group of this tile with \a objectGroup. The tile releases
  * ownership over its existing object group and takes ownership over the new
  * one.
- *
- * @return The previous object group referenced by this tile.
  */
-ObjectGroup *Tile::swapObjectGroup(ObjectGroup *objectGroup)
+void Tile::swapObjectGroup(std::unique_ptr<ObjectGroup> &objectGroup)
 {
-    ObjectGroup *previousObjectGroup = mObjectGroup;
-    mObjectGroup = objectGroup;
-    return previousObjectGroup;
+    std::swap(mObjectGroup, objectGroup);
 }
 
 /**
@@ -154,9 +142,26 @@ ObjectGroup *Tile::swapObjectGroup(ObjectGroup *objectGroup)
  */
 void Tile::setFrames(const QVector<Frame> &frames)
 {
+    resetAnimation();
     mFrames = frames;
+}
+
+/**
+ * Resets the tile animation. Returns whether this caused the current tileId to
+ * change.
+ */
+bool Tile::resetAnimation()
+{
+    if (!isAnimated())
+        return false;
+
+    Frame previousFrame = mFrames.at(mCurrentFrameIndex);
+    Frame currentFrame = mFrames.at(0);
+
     mCurrentFrameIndex = 0;
     mUnusedTime = 0;
+
+    return previousFrame.tileId != currentFrame.tileId;
 }
 
 /**
@@ -181,4 +186,28 @@ bool Tile::advanceAnimation(int ms)
     }
 
     return previousTileId != frame.tileId;
+}
+
+/**
+ * Returns a duplicate of this tile, to be added to the given \a tileset.
+ */
+Tile *Tile::clone(Tileset *tileset) const
+{
+    Tile *c = new Tile(mImage, mId, tileset);
+    c->setProperties(properties());
+
+    c->mImageSource = mImageSource;
+    c->mImageStatus = mImageStatus;
+    c->mType = mType;
+    c->mTerrain = mTerrain;
+    c->mProbability = mProbability;
+
+    if (mObjectGroup)
+        c->mObjectGroup.reset(mObjectGroup->clone());
+
+    c->mFrames = mFrames;
+    c->mCurrentFrameIndex = mCurrentFrameIndex;
+    c->mUnusedTime = mUnusedTime;
+
+    return c;
 }

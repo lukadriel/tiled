@@ -1,38 +1,57 @@
 import qbs 1.0
 import qbs.Probes as Probes
+import qbs.File
+import qbs.Environment
+import qbs.FileInfo
 
 TiledPlugin {
     Depends { name: "Qt"; submodules: ["widgets"] }
 
-    // Not sure how to properly support Python on Mac OS X yet
-    // (possibly requires using python-config)
-    condition: qbs.targetOS.contains("linux") || qbs.targetOS.contains("windows")
+    condition: {
+        if (qbs.targetOS.contains("windows"))
+            return File.exists(Environment.getEnv("PYTHONHOME"));
+
+        return pkgConfigPython3.found;
+    }
 
     Probes.PkgConfigProbe {
-        id: pkgConfig
-        name: "python-2.7"
+        id: pkgConfigPython3
+        name: "python3"
+    }
+
+    PythonProbe {
+        id: pythonDllProbe
+        pythonDir: Environment.getEnv("PYTHONHOME")
     }
 
     Properties {
-        condition: qbs.targetOS.contains("linux")
-
-        cpp.cxxFlags: pkgConfig.cflags
-        // This should be it, but it doesn't work because the -lpython2.7 ends
-        // up too early on the command line.
-        //cpp.linkerFlags: pkgConfig.libs
-        cpp.dynamicLibraries: ["python2.7"]
+        condition: pkgConfigPython3.found
+        cpp.cxxFlags: pkgConfigPython3.cflags
+        cpp.dynamicLibraries: pkgConfigPython3.libraries
+        cpp.libraryPaths: pkgConfigPython3.libraryPaths
+        cpp.linkerFlags: pkgConfigPython3.linkerFlags
     }
 
     Properties {
-        condition: qbs.targetOS.contains("windows")
-        cpp.includePaths: ["C:/Python27/include"]
-        cpp.libraryPaths: ["C:/Python27/libs"]
-        cpp.dynamicLibraries: ["python27"]
+        condition: qbs.targetOS.contains("windows") && !qbs.toolchain.contains("mingw")
+        cpp.includePaths: [Environment.getEnv("PYTHONHOME") + "/include"]
+        cpp.libraryPaths: [Environment.getEnv("PYTHONHOME") + "/libs"]
+        cpp.dynamicLibraries: ["python3"]
+    }
+
+    Properties {
+        condition: qbs.targetOS.contains("windows") && qbs.toolchain.contains("mingw")
+        cpp.includePaths: [Environment.getEnv("PYTHONHOME") + "/include"]
+        cpp.libraryPaths: [Environment.getEnv("PYTHONHOME") + "/libs"]
+        cpp.dynamicLibraries: [FileInfo.joinPaths(Environment.getEnv("PYTHONHOME"), pythonDllProbe.fileNamePrefix + ".dll")]
     }
 
     files: [
+        "plugin.json",
         "pythonplugin.cpp",
         "pythonplugin.h",
         "pythonbind.cpp",
+        "qtbinding.py",
+        "tiledbinding.py",
     ]
 }

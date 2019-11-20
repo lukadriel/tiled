@@ -1,6 +1,7 @@
 include(../../tiled.pri)
 include(../libtiled/libtiled.pri)
 include(../qtpropertybrowser/src/qtpropertybrowser.pri)
+include(../qtsingleapplication/src/qtsingleapplication.pri)
 
 TEMPLATE = app
 TARGET = tiled
@@ -12,9 +13,9 @@ win32 {
     DESTDIR = ../../bin
 }
 
-QT += widgets
+QT += widgets qml
 
-contains(QT_CONFIG, opengl):!macx: QT += opengl
+DEFINES += TILED_VERSION=$${TILED_VERSION}
 
 DEFINES += QT_NO_CAST_FROM_ASCII \
     QT_NO_CAST_TO_ASCII
@@ -23,6 +24,7 @@ macx {
     QMAKE_LIBDIR += $$OUT_PWD/../../bin/Tiled.app/Contents/Frameworks
     LIBS += -framework Foundation
     DEFINES += QT_NO_OPENGL
+    OBJECTIVE_SOURCES += macsupport.mm
 } else:win32 {
     LIBS += -L$$OUT_PWD/../../lib
 } else {
@@ -30,7 +32,7 @@ macx {
 }
 
 # Make sure the Tiled executable can find libtiled
-!win32:!macx:contains(RPATH, yes) {
+!win32:!macx:!cygwin:contains(RPATH, yes) {
     QMAKE_RPATHDIR += \$\$ORIGIN/../lib
 
     # It is not possible to use ORIGIN in QMAKE_RPATHDIR, so a bit manually
@@ -39,22 +41,28 @@ macx {
 }
 
 SOURCES += aboutdialog.cpp \
-    abstractimagetool.cpp \
     abstractobjecttool.cpp \
+    abstracttileselectiontool.cpp \
     abstracttiletool.cpp \
+    abstracttilefilltool.cpp \
     abstracttool.cpp \
+    actionmanager.cpp \
+    addpropertydialog.cpp \
     addremovelayer.cpp \
     addremovemapobject.cpp \
     addremoveterrain.cpp \
     addremovetiles.cpp \
     addremovetileset.cpp \
+    addremovewangset.cpp \
+    adjusttileindexes.cpp \
     automapper.cpp \
     automapperwrapper.cpp \
     automappingmanager.cpp \
     automappingutils.cpp  \
+    brokenlinks.cpp \
     brushitem.cpp \
     bucketfilltool.cpp \
-    changeimagelayerposition.cpp \
+    capturestamphelper.cpp \
     changeimagelayerproperties.cpp \
     changelayer.cpp \
     changemapobject.cpp \
@@ -63,11 +71,21 @@ SOURCES += aboutdialog.cpp \
     changeobjectgroupproperties.cpp \
     changepolygon.cpp \
     changeproperties.cpp \
+    changeselectedarea.cpp \
+    changeterrain.cpp \
+    changetile.cpp \
     changetileanimation.cpp \
+    changetileimagesource.cpp \
     changetileobjectgroup.cpp \
     changetileprobability.cpp \
-    changeselectedarea.cpp \
     changetileterrain.cpp \
+    changetilewangid.cpp \
+    changewangcolordata.cpp \
+    changewangsetdata.cpp \
+    clickablelabel.cpp \
+    issuescounter.cpp \
+    issuesdock.cpp \
+    issuesmodel.cpp \
     clipboardmanager.cpp \
     colorbutton.cpp \
     commandbutton.cpp \
@@ -75,35 +93,64 @@ SOURCES += aboutdialog.cpp \
     commanddatamodel.cpp \
     commanddialog.cpp \
     commandlineparser.cpp \
+    commandmanager.cpp \
     consoledock.cpp \
     createellipseobjecttool.cpp \
-    createmultipointobjecttool.cpp \
     createobjecttool.cpp \
+    createpointobjecttool.cpp \
     createpolygonobjecttool.cpp \
-    createpolylineobjecttool.cpp \
     createrectangleobjecttool.cpp \
     createscalableobjecttool.cpp \
+    createtemplatetool.cpp \
+    createtextobjecttool.cpp \
     createtileobjecttool.cpp \
+    document.cpp \
     documentmanager.cpp \
+    donationdialog.cpp \
+    editableasset.cpp \
+    editablegrouplayer.cpp \
+    editableimagelayer.cpp \
+    editablelayer.cpp \
+    editablemanager.cpp \
+    editablemap.cpp \
+    editablemapobject.cpp \
+    editableobject.cpp \
+    editableobjectgroup.cpp \
+    editableselectedarea.cpp \
+    editableterrain.cpp \
+    editabletile.cpp \
+    editabletilelayer.cpp \
+    editabletileset.cpp \
+    editor.cpp \
     editpolygontool.cpp \
-    editterraindialog.cpp \
     eraser.cpp \
     erasetiles.cpp \
     exportasimagedialog.cpp \
+    exporthelper.cpp \
+    filechangedwarning.cpp \
     fileedit.cpp \
-    filesystemwatcher.cpp \
-    filltiles.cpp \
+    filteredit.cpp \
+    flexiblescrollbar.cpp \
     flipmapobjects.cpp \
     geometry.cpp \
+    grouplayeritem.cpp \
+    iconcheckdelegate.cpp \
+    id.cpp \
+    imagecolorpickerwidget.cpp \
     imagelayeritem.cpp \
-    imagemovementtool.cpp \
     languagemanager.cpp \
     layerdock.cpp \
+    layeritem.cpp \
     layermodel.cpp \
+    layeroffsettool.cpp \
+    magicwandtool.cpp \
     main.cpp \
+    maintoolbar.cpp \
     mainwindow.cpp \
     mapdocumentactionhandler.cpp \
     mapdocument.cpp \
+    mapeditor.cpp \
+    mapitem.cpp \
     mapobjectitem.cpp \
     mapobjectmodel.cpp \
     mapscene.cpp \
@@ -111,89 +158,137 @@ SOURCES += aboutdialog.cpp \
     mapview.cpp \
     minimap.cpp \
     minimapdock.cpp \
-    movabletabwidget.cpp \
+    minimaprenderer.cpp \
     movelayer.cpp \
     movemapobject.cpp \
     movemapobjecttogroup.cpp \
-    movetileset.cpp \
+    moveterrain.cpp \
     newmapdialog.cpp \
+    newsbutton.cpp \
+    newsfeed.cpp \
     newtilesetdialog.cpp \
+    newversionbutton.cpp \
+    newversionchecker.cpp \
+    newversiondialog.cpp \
+    noeditorwidget.cpp \
     objectgroupitem.cpp \
     objectsdock.cpp \
+    objectselectionitem.cpp \
     objectselectiontool.cpp \
-    objecttypes.cpp \
+    objectsview.cpp \
+    objecttemplatemodel.cpp \
+    objecttypeseditor.cpp \
     objecttypesmodel.cpp \
     offsetlayer.cpp \
     offsetmapdialog.cpp \
     painttilelayer.cpp \
-    patreondialog.cpp \
-    pluginmanager.cpp \
+    pluginlistmodel.cpp \
+    pointhandle.cpp \
     preferences.cpp \
     preferencesdialog.cpp \
     propertiesdock.cpp \
     propertybrowser.cpp \
     raiselowerhelper.cpp \
-    renamelayer.cpp \
-    renameterrain.cpp \
+    regionvaluetype.cpp \
+    renamewangset.cpp \
+    reparentlayers.cpp \
+    replacetemplate.cpp \
+    replacetileset.cpp \
     resizedialog.cpp \
     resizehelper.cpp \
     resizemap.cpp \
     resizemapobject.cpp \
     resizetilelayer.cpp \
+    reversingproxymodel.cpp \
     rotatemapobject.cpp \
+    scriptedaction.cpp \
+    scriptedfileformat.cpp \
+    scriptedtool.cpp \
+    scriptfile.cpp \
+    scriptmanager.cpp \
+    scriptmodule.cpp \
     selectionrectangle.cpp \
     selectsametiletool.cpp \
+    shapefilltool.cpp \
+    shortcutsettingspage.cpp \
     snaphelper.cpp \
+    stampactions.cpp \
     stampbrush.cpp \
+    stylehelper.cpp \
+    swaptiles.cpp \
+    templatesdock.cpp \
     terrainbrush.cpp \
     terraindock.cpp \
     terrainmodel.cpp \
     terrainview.cpp \
-    thumbnailrenderer.cpp \
-    tileanimationdriver.cpp \
+    texteditordialog.cpp \
+    textpropertyedit.cpp \
     tileanimationeditor.cpp \
-    tilecollisioneditor.cpp \
+    tilecollisiondock.cpp \
     tiledapplication.cpp \
+    tiledproxystyle.cpp \
+    tilelayeredit.cpp \
     tilelayeritem.cpp \
     tilepainter.cpp \
     tileselectionitem.cpp \
     tileselectiontool.cpp \
     tilesetchanges.cpp \
     tilesetdock.cpp \
-    tilesetmanager.cpp \
+    tilesetdocument.cpp \
+    tilesetdocumentsmodel.cpp \
+    tileseteditor.cpp \
     tilesetmodel.cpp \
+    tilesetparametersedit.cpp \
+    tilesetterrainmodel.cpp \
+    tilesetwangsetmodel.cpp \
     tilesetview.cpp \
     tilestamp.cpp \
     tilestampmanager.cpp \
     tilestampmodel.cpp \
     tilestampsdock.cpp \
-    tmxmapreader.cpp \
-    tmxmapwriter.cpp \
+    tmxmapformat.cpp \
     toolmanager.cpp \
+    treeviewcombobox.cpp \
+    undocommands.cpp \
     undodock.cpp \
     utils.cpp \
     varianteditorfactory.cpp \
     variantpropertymanager.cpp \
-    zoomable.cpp \
-    magicwandtool.cpp
+    wangbrush.cpp \
+    wangcolormodel.cpp \
+    wangcolorview.cpp \
+    wangsetview.cpp \
+    wangsetmodel.cpp \
+    wangdock.cpp \
+    wangfiller.cpp \
+    wangtemplateview.cpp \
+    wangtemplatemodel.cpp \
+    zoomable.cpp
 
 HEADERS += aboutdialog.h \
-    abstractimagetool.h \
     abstractobjecttool.h \
+    abstracttileselectiontool.h \
     abstracttiletool.h \
+    abstracttilefilltool.h \
     abstracttool.h \
+    actionmanager.h \
+    addpropertydialog.h \
     addremovelayer.h \
     addremovemapobject.h \
     addremoveterrain.h \
-    addremovetiles.h \
     addremovetileset.h \
+    addremovetiles.h \
+    addremovewangset.h \
+    adjusttileindexes.h \
     automapper.h \
     automapperwrapper.h \
     automappingmanager.h \
     automappingutils.h \
+    brokenlinks.h \
     brushitem.h \
     bucketfilltool.h \
-    changeimagelayerposition.h \
+    capturestamphelper.h \
+    changeevents.h \
     changeimagelayerproperties.h \
     changelayer.h \
     changemapobject.h \
@@ -202,72 +297,119 @@ HEADERS += aboutdialog.h \
     changeobjectgroupproperties.h \
     changepolygon.h \
     changeproperties.h \
+    changeselectedarea.h \
+    changeterrain.h \
+    changetile.h \
     changetileanimation.h \
+    changetileimagesource.h \
     changetileobjectgroup.h \
     changetileprobability.h \
-    changeselectedarea.h \
     changetileterrain.h \
+    changetilewangid.h \
+    changewangcolordata.h \
+    changewangsetdata.h \
+    clickablelabel.h \
+    issuescounter.h \
+    issuesdock.h \
+    issuesmodel.h \
     clipboardmanager.h \
     colorbutton.h \
-    containerhelpers.h \
     commandbutton.h \
     commanddatamodel.h \
     commanddialog.h \
     command.h \
     commandlineparser.h \
+    commandmanager.h \
     consoledock.h \
     createellipseobjecttool.h \
-    createmultipointobjecttool.h \
     createobjecttool.h \
+    createpointobjecttool.h \
     createpolygonobjecttool.h \
-    createpolylineobjecttool.h \
     createrectangleobjecttool.h \
     createscalableobjecttool.h \
+    createtemplatetool.h \
+    createtextobjecttool.h \
     createtileobjecttool.h \
+    document.h \
     documentmanager.h \
+    donationdialog.h \
+    editableasset.h \
+    editablegrouplayer.h \
+    editableimagelayer.h \
+    editablelayer.h \
+    editablemanager.h \
+    editablemap.h \
+    editablemapobject.h \
+    editableobject.h \
+    editableobjectgroup.h \
+    editableselectedarea.h \
+    editableterrain.h \
+    editabletile.h \
+    editabletilelayer.h \
+    editabletileset.h \
+    editor.h \
     editpolygontool.h \
-    editterraindialog.h \
     eraser.h \
     erasetiles.h \
     exportasimagedialog.h \
+    exporthelper.h \
+    filechangedwarning.h \
     fileedit.h \
-    filesystemwatcher.h \
-    filltiles.h \
+    filteredit.h \
+    flexiblescrollbar.h \
     flipmapobjects.h \
     geometry.h \
+    grouplayeritem.h \
+    iconcheckdelegate.h \
+    id.h \
+    imagecolorpickerwidget.h \
     imagelayeritem.h \
-    imagemovementtool.h \
     languagemanager.h \
     layerdock.h \
+    layeritem.h \
     layermodel.h \
+    layeroffsettool.h \
     macsupport.h \
+    magicwandtool.h \
+    maintoolbar.h \
     mainwindow.h \
     mapdocumentactionhandler.h \
     mapdocument.h \
+    mapeditor.h \
+    mapitem.h \
     mapobjectitem.h \
     mapobjectmodel.h \
     mapscene.h \
     mapsdock.h \
     mapview.h \
-    minimap.h \
     minimapdock.h \
-    movabletabwidget.h \
+    minimap.h \
+    minimaprenderer.h \
     movelayer.h \
     movemapobject.h \
     movemapobjecttogroup.h \
-    movetileset.h \
+    moveterrain.h \
     newmapdialog.h \
+    newsbutton.h \
+    newsfeed.h \
     newtilesetdialog.h \
+    newversionbutton.h \
+    newversionchecker.h \
+    newversiondialog.h \
+    noeditorwidget.h \
     objectgroupitem.h \
     objectsdock.h \
+    objectselectionitem.h \
+    objecttemplatemodel.h \
     objectselectiontool.h \
-    objecttypes.h \
+    objectsview.h \
+    objecttypeseditor.h \
     objecttypesmodel.h \
     offsetlayer.h \
     offsetmapdialog.h \
     painttilelayer.h \
-    patreondialog.h \
-    pluginmanager.h \
+    pluginlistmodel.h \
+    pointhandle.h \
     preferencesdialog.h \
     preferences.h \
     propertiesdock.h \
@@ -275,66 +417,99 @@ HEADERS += aboutdialog.h \
     raiselowerhelper.h \
     randompicker.h \
     rangeset.h \
-    renamelayer.h \
-    renameterrain.h \
+    regionvaluetype.h \
+    renamewangset.h \
+    reparentlayers.h \
+    replacetemplate.h \
+    replacetileset.h \
     resizedialog.h \
     resizehelper.h \
     resizemap.h \
     resizemapobject.h \
     resizetilelayer.h \
+    reversingproxymodel.h \
     rotatemapobject.h \
+    scriptedaction.h \
+    scriptedfileformat.h \
+    scriptedtool.h \
+    scriptfile.h \
+    scriptmanager.h \
+    scriptmodule.h \
     selectionrectangle.h \
     selectsametiletool.h \
+    shapefilltool.h \
+    shortcutsettingspage.h \
     snaphelper.h \
+    stampactions.h \
     stampbrush.h \
+    stylehelper.h \
+    swaptiles.h \
+    templatesdock.h \
     terrainbrush.h \
     terraindock.h \
     terrainmodel.h \
     terrainview.h \
-    thumbnailrenderer.h \
-    tileanimationdriver.h \
+    texteditordialog.h \
+    textpropertyedit.h \
     tileanimationeditor.h \
-    tilecollisioneditor.h \
+    tilecollisiondock.h \
     tiledapplication.h \
+    tiledproxystyle.h \
+    tilelayeredit.h \
     tilelayeritem.h \
     tilepainter.h \
     tileselectionitem.h \
     tileselectiontool.h \
     tilesetchanges.h \
     tilesetdock.h \
-    tilesetmanager.h \
+    tilesetdocument.h \
+    tilesetdocumentsmodel.h \
+    tileseteditor.h \
     tilesetmodel.h \
+    tilesetparametersedit.h \
+    tilesetterrainmodel.h \
+    tilesetwangsetmodel.h \
     tilesetview.h \
     tilestamp.h \
     tilestampmanager.h \
     tilestampmodel.h \
     tilestampsdock.h \
-    tmxmapreader.h \
-    tmxmapwriter.h \
+    tmxmapformat.h \
     toolmanager.h \
+    treeviewcombobox.h \
     undocommands.h \
     undodock.h \
     utils.h \
     varianteditorfactory.h \
     variantpropertymanager.h \
-    zoomable.h \
-    magicwandtool.h
-
-macx {
-    OBJECTIVE_SOURCES += macsupport.mm
-}
+    wangbrush.h \
+    wangcolormodel.h \
+    wangcolorview.h \
+    wangsetview.h \
+    wangsetmodel.h \
+    wangdock.h \
+    wangfiller.h \
+    wangtemplateview.h \
+    wangtemplatemodel.h \
+    zoomable.h
 
 FORMS += aboutdialog.ui \
+    addpropertydialog.ui \
     commanddialog.ui \
-    editterraindialog.ui \
+    donationdialog.ui \
     exportasimagedialog.ui \
+    imagecolorpickerwidget.ui \
     mainwindow.ui \
     newmapdialog.ui \
     newtilesetdialog.ui \
+    newversiondialog.ui \
+    noeditorwidget.ui \
+    objecttypeseditor.ui \
     offsetmapdialog.ui \
-    patreondialog.ui \
     preferencesdialog.ui \
     resizedialog.ui \
+    shortcutsettingspage.ui \
+    texteditordialog.ui \
     tileanimationeditor.ui
 
 icon32.path = $${PREFIX}/share/icons/hicolor/32x32/apps/
@@ -362,12 +537,20 @@ mimeiconscalable.files += images/scalable/application-x-tiled.svg
 INSTALLS += mimeiconscalable
 
 mimeinfofile.path = $${PREFIX}/share/mime/packages/
-mimeinfofile.files += ../../mime/tiled.xml
+mimeinfofile.files += ../../mime/org.mapeditor.Tiled.xml
 INSTALLS += mimeinfofile
 
+thumbnailgenerator.path = $${PREFIX}/share/thumbnailers/
+thumbnailgenerator.files += ../../mime/tiled.thumbnailer
+INSTALLS += thumbnailgenerator
+
 desktopfile.path = $${PREFIX}/share/applications/
-desktopfile.files += ../../tiled.desktop
+desktopfile.files += ../../org.mapeditor.Tiled.desktop
 INSTALLS += desktopfile
+
+appdatafile.path = $${PREFIX}/share/metainfo/
+appdatafile.files += ../../org.mapeditor.Tiled.appdata.xml
+INSTALLS += appdatafile
 
 manpage.path = $${PREFIX}/share/man/man1/
 manpage.files += ../../man/tiled.1
@@ -377,10 +560,11 @@ RESOURCES += tiled.qrc
 macx {
     TARGET = Tiled
     QMAKE_INFO_PLIST = Info.plist
-    ICON = images/tiled-icon-mac.icns
+    QMAKE_ASSET_CATALOGS += images/tiled.xcassets
+    QMAKE_ASSET_CATALOGS_APP_ICON = tiled-icon-mac
 }
 win32 {
-    RC_FILE = tiled.rc
+    RC_FILE = tiled.rc.in
     PRECOMPILED_HEADER = pch.h
 }
 win32:INCLUDEPATH += .

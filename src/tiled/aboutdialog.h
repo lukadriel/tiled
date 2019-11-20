@@ -19,27 +19,22 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ABOUTDIALOG_H
-#define ABOUTDIALOG_H
+#pragma once
 
 #include <QDialog>
 #include "ui_aboutdialog.h"
 
 namespace Tiled {
-namespace Internal {
 
 class AboutDialog : public QDialog, private Ui::AboutDialog
 {
     Q_OBJECT
 
 public:
-    AboutDialog(QWidget *parent = 0);
+    AboutDialog(QWidget *parent = nullptr);
 
-private slots:
+private:
     void donate();
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ABOUTDIALOG_H

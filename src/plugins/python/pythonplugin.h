@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PYTHONPLUGIN_H
-#define PYTHONPLUGIN_H
+#pragma once
 
 #ifdef __MINGW32__
 #include <cmath> // included before Python.h to fix ::hypot not declared issue
@@ -27,12 +26,13 @@
 
 #include <Python.h>
 
-#include "mapwriterinterface.h"
-#include "mapreaderinterface.h"
-#include "logginginterface.h"
+#include "mapformat.h"
+#include "plugin.h"
 
+#include <QFileSystemWatcher>
 #include <QMap>
 #include <QObject>
+#include <QTimer>
 
 namespace Tiled {
 class Map;
@@ -40,58 +40,48 @@ class Map;
 
 namespace Python {
 
-class Q_DECL_EXPORT PythonPlugin
-        : public QObject
-        , public Tiled::MapReaderInterface
-        , public Tiled::MapWriterInterface
-        , public Tiled::LoggingInterface
+class PythonMapFormat;
+
+struct ScriptEntry
+{
+    ScriptEntry()
+        : module(nullptr)
+        , mapFormat(nullptr)
+    {}
+
+    QString name;
+    PyObject *module;
+    PythonMapFormat *mapFormat;
+};
+
+class Q_DECL_EXPORT PythonPlugin : public Tiled::Plugin
 {
     Q_OBJECT
-    Q_INTERFACES(Tiled::MapReaderInterface Tiled::MapWriterInterface Tiled::LoggingInterface)
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapWriterInterface" FILE "plugin.json")
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapReaderInterface" FILE "plugin.json")
-    Q_PLUGIN_METADATA(IID "org.mapeditor.LoggingInterface" FILE "plugin.json")
-
-signals:
-    void info(QString s);
-    void error(QString s);
+    Q_INTERFACES(Tiled::Plugin)
+    Q_PLUGIN_METADATA(IID "org.mapeditor.Plugin" FILE "plugin.json")
 
 public:
     PythonPlugin();
-    ~PythonPlugin();
+    ~PythonPlugin() override;
 
-    void log(OutputType type, const QString msg);
-    void log(const QString msg);
-    void init_catcher(void);
-
-    // MapReaderInterface
-    Tiled::Map *read(const QString &fileName);
-    bool supportsFile(const QString &fileName) const;
-
-    // MapWriterInterface
-    bool write(const Tiled::Map *map, const QString &fileName);
-
-    // Both interfaces
-    QStringList nameFilters() const;
-    QString errorString() const;
+    void initialize() override;
 
 private:
-    void handleError() const;
-    PyObject *findPluginSubclass(PyObject *pmod);
-    PyObject *checkFunction(PyObject *pcls, const char *fun) const;
-    bool checkFileSupport(PyObject* cls, char *file) const;
     void reloadModules();
+    bool loadOrReloadModule(ScriptEntry &script);
+
+    PyObject *findPluginSubclass(PyObject *module);
 
     QString mScriptDir;
-    QMap<QString,PyObject*> mKnownExtModules;
-    QMap<QString,PyObject*> mKnownExtClasses;
-    PyObject *pTiledCls;
+    QMap<QString,ScriptEntry> mScripts;
+    PyObject *mPluginClass;
 
-    QString mError;
-    uint mLastReload;
+    QFileSystemWatcher mFileSystemWatcher;
+    QTimer mReloadTimer;
 };
 
-// Class exposed for python scripts to extend
+
+// Class exposed for Python scripts to extend
 class PythonScript {
 public:
     // perhaps provide default that throws NotImplementedError
@@ -101,11 +91,36 @@ public:
     QString nameFilter() const;
 };
 
+
+class PythonMapFormat : public Tiled::MapFormat
+{
+    Q_OBJECT
+    Q_INTERFACES(Tiled::MapFormat)
+
+public:
+    PythonMapFormat(const QString &scriptFile,
+                    PyObject *class_,
+                    QObject *parent = nullptr);
+
+    Capabilities capabilities() const override { return mCapabilities; }
+
+    std::unique_ptr<Tiled::Map> read(const QString &fileName) override;
+    bool supportsFile(const QString &fileName) const override;
+
+    bool write(const Tiled::Map *map, const QString &fileName, Options options) override;
+
+    QString nameFilter() const override;
+    QString shortName() const override;
+    QString errorString() const override;
+
+    PyObject *pythonClass() const { return mClass; }
+    void setPythonClass(PyObject *class_);
+
+private:
+    PyObject *mClass;
+    QString mScriptFile;
+    QString mError;
+    Capabilities mCapabilities;
+};
+
 } // namespace Python
-
-PyMODINIT_FUNC inittiled(void);
-extern int _wrap_convert_py2c__Tiled__Map___star__(PyObject *obj, Tiled::Map * *address);
-extern PyObject* _wrap_convert_c2py__Tiled__Map_const(Tiled::Map const *cvalue);
-extern PyObject* _wrap_convert_c2py__Tiled__LoggingInterface(Tiled::LoggingInterface *cvalue);
-
-#endif // PYTHONPLUGIN_H

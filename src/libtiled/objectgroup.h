@@ -28,16 +28,15 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef OBJECTGROUP_H
-#define OBJECTGROUP_H
-
-#include "tiled_global.h"
+#pragma once
 
 #include "layer.h"
 
 #include <QColor>
 #include <QList>
 #include <QMetaType>
+
+#include <memory>
 
 namespace Tiled {
 
@@ -48,6 +47,8 @@ class MapObject;
  */
 class TILEDSHARED_EXPORT ObjectGroup : public Layer
 {
+    Q_OBJECT
+
 public:
     /**
      * Objects within an object group can either be drawn top down (sorted
@@ -61,20 +62,10 @@ public:
         IndexOrder
     };
 
-    /**
-     * Default constructor.
-     */
-    ObjectGroup();
+    explicit ObjectGroup(const QString &name = QString());
+    ObjectGroup(const QString &name, int x, int y);
 
-    /**
-     * Constructor with some parameters.
-     */
-    ObjectGroup(const QString &name, int x, int y, int width, int height);
-
-    /**
-     * Destructor.
-     */
-    ~ObjectGroup();
+    ~ObjectGroup() override;
 
     /**
      * Returns a pointer to the list of objects in this object group.
@@ -95,6 +86,7 @@ public:
      * Adds an object to this object group.
      */
     void addObject(MapObject *object);
+    void addObject(std::unique_ptr<MapObject> &&object);
 
     /**
      * Inserts an object at the specified index. This is only used for undoing
@@ -137,7 +129,7 @@ public:
     /**
      * Returns whether this object group contains any objects.
      */
-    bool isEmpty() const;
+    bool isEmpty() const override;
 
     /**
      * Computes and returns the set of tilesets used by this object group.
@@ -148,13 +140,14 @@ public:
      * Returns whether any tile objects in this object group reference tiles
      * in the given tileset.
      */
-    bool referencesTileset(const Tileset *tileset) const;
+    bool referencesTileset(const Tileset *tileset) const override;
 
     /**
      * Replaces all references to tiles from \a oldTileset with tiles from
      * \a newTileset.
      */
-    void replaceReferencesToTileset(Tileset *oldTileset, Tileset *newTileset);
+    void replaceReferencesToTileset(Tileset *oldTileset,
+                                    Tileset *newTileset) override;
 
     /**
      * Offsets all objects within the group by the \a offset given in pixel
@@ -162,13 +155,13 @@ public:
      * within \a bounds, and wrapping occurs if the displaced center is out of
      * the bounds.
      *
-     * \sa TileLayer::offset()
+     * \sa TileLayer::offsetTiles()
      */
-    void offset(const QPointF &offset, const QRectF &bounds,
-                bool wrapX, bool wrapY);
+    void offsetObjects(const QPointF &offset, const QRectF &bounds,
+                       bool wrapX, bool wrapY);
 
-    bool canMergeWith(Layer *other) const;
-    Layer *mergedWith(Layer *other) const;
+    bool canMergeWith(const Layer *other) const override;
+    Layer *mergedWith(const Layer *other) const override;
 
     const QColor &color() const;
     void setColor(const QColor &color);
@@ -176,7 +169,16 @@ public:
     DrawOrder drawOrder() const;
     void setDrawOrder(DrawOrder drawOrder);
 
-    Layer *clone() const;
+    ObjectGroup *clone() const override;
+
+    void resetObjectIds();
+    int highestObjectId() const;
+
+    // Enable easy iteration over objects with range-based for
+    QList<MapObject*>::iterator begin() { return mObjects.begin(); }
+    QList<MapObject*>::iterator end() { return mObjects.end(); }
+    QList<MapObject*>::const_iterator begin() const { return mObjects.begin(); }
+    QList<MapObject*>::const_iterator end() const { return mObjects.end(); }
 
 protected:
     ObjectGroup *initializeClone(ObjectGroup *clone) const;
@@ -238,5 +240,3 @@ TILEDSHARED_EXPORT ObjectGroup::DrawOrder drawOrderFromString(const QString &);
 } // namespace Tiled
 
 Q_DECLARE_METATYPE(Tiled::ObjectGroup*)
-
-#endif // OBJECTGROUP_H

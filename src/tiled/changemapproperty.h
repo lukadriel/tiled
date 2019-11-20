@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGEMAPPROPERTY_H
-#define CHANGEMAPPROPERTY_H
+#pragma once
 
 #include "map.h"
 
@@ -27,7 +26,6 @@
 #include <QUndoCommand>
 
 namespace Tiled {
-namespace Internal {
 
 class MapDocument;
 
@@ -37,13 +35,16 @@ public:
     enum Property {
         TileWidth,
         TileHeight,
+        Infinite,
         HexSideLength,
         StaggerAxis,
         StaggerIndex,
         Orientation,
         RenderOrder,
         BackgroundColor,
-        LayerDataFormat
+        LayerDataFormat,
+        CompressionLevel,
+        ChunkSize
     };
 
     /**
@@ -63,6 +64,14 @@ public:
      * @param backgroundColor   the new color to apply for the background
      */
     ChangeMapProperty(MapDocument *mapDocument, const QColor &backgroundColor);
+    
+    /**
+     * Constructs a command that changes the chunk size.
+     *
+     * @param mapDocument       the map document of the map
+     * @param chunkSize         the new chunk size to use for tile layers
+     */
+    ChangeMapProperty(MapDocument *mapDocument, QSize chunkSize);
 
     /**
      * Constructs a command that changes the map stagger axis.
@@ -104,8 +113,8 @@ public:
      */
     ChangeMapProperty(MapDocument *mapDocument, Map::LayerDataFormat layerDataFormat);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
     void swap();
@@ -113,6 +122,7 @@ private:
     MapDocument *mMapDocument;
     Property mProperty;
     QColor mBackgroundColor;
+    QSize mChunkSize;
     union {
         int mIntValue;
         Map::StaggerAxis mStaggerAxis;
@@ -123,7 +133,4 @@ private:
     };
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // CHANGEMAPPROPERTY_H

@@ -18,14 +18,12 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CREATETILEOBJECTTOOL_H
-#define CREATETILEOBJECTTOOL_H
+#pragma once
 
 #include "createobjecttool.h"
 
 namespace Tiled {
 
-namespace Internal {
 
 class CreateTileObjectTool : public CreateObjectTool
 {
@@ -34,19 +32,16 @@ class CreateTileObjectTool : public CreateObjectTool
 public:
     CreateTileObjectTool(QObject *parent);
 
-    void languageChanged();
+    void languageChanged() override;
 
 protected:
     void mouseMovedWhileCreatingObject(const QPointF &pos,
-                                       Qt::KeyboardModifiers modifiers);
-    void mousePressedWhileCreatingObject(QGraphicsSceneMouseEvent *event);
-    void mouseReleasedWhileCreatingObject(QGraphicsSceneMouseEvent *event);
+                                       Qt::KeyboardModifiers modifiers) override;
 
-    void startNewMapObject(const QPointF &pos, ObjectGroup *objectGroup);
-    MapObject *createNewMapObject();
+    MapObject *createNewMapObject() override;
+
+private:
+    void languageChangedImpl();
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // CREATETILEOBJECTTOOL_H

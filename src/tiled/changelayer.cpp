@@ -20,21 +20,50 @@
 
 #include "changelayer.h"
 
+#include "changeevents.h"
+#include "document.h"
 #include "layer.h"
-#include "layermodel.h"
 #include "map.h"
-#include "mapdocument.h"
 
 #include <QCoreApplication>
 
 namespace Tiled {
-namespace Internal {
 
-SetLayerVisible::SetLayerVisible(MapDocument *mapDocument,
-                                 int layerIndex,
+SetLayerName::SetLayerName(Document *document,
+                           Layer *layer,
+                           const QString &name):
+    mDocument(document),
+    mLayer(layer),
+    mName(name)
+{
+    setText(QCoreApplication::translate("Undo Commands", "Rename Layer"));
+}
+
+void SetLayerName::undo()
+{
+    swapName();
+}
+
+void SetLayerName::redo()
+{
+    swapName();
+}
+
+void SetLayerName::swapName()
+{
+    const QString previousName = mLayer->name();
+    mLayer->setName(mName);
+    mName = previousName;
+
+    emit mDocument->changed(LayerChangeEvent(mLayer, LayerChangeEvent::NameProperty));
+}
+
+
+SetLayerVisible::SetLayerVisible(Document *document,
+                                 Layer *layer,
                                  bool visible)
-    : mMapDocument(mapDocument)
-    , mLayerIndex(layerIndex)
+    : mDocument(document)
+    , mLayer(layer)
     , mVisible(visible)
 {
     if (visible)
@@ -47,19 +76,45 @@ SetLayerVisible::SetLayerVisible(MapDocument *mapDocument,
 
 void SetLayerVisible::swap()
 {
-    const Layer *layer = mMapDocument->map()->layerAt(mLayerIndex);
-    const bool previousVisible = layer->isVisible();
-    mMapDocument->layerModel()->setLayerVisible(mLayerIndex, mVisible);
+    const bool previousVisible = mLayer->isVisible();
+    mLayer->setVisible(mVisible);
     mVisible = previousVisible;
+
+    emit mDocument->changed(LayerChangeEvent(mLayer, LayerChangeEvent::VisibleProperty));
 }
 
 
-SetLayerOpacity::SetLayerOpacity(MapDocument *mapDocument,
-                                 int layerIndex,
-                                 float opacity)
-    : mMapDocument(mapDocument)
-    , mLayerIndex(layerIndex)
-    , mOldOpacity(mMapDocument->map()->layerAt(layerIndex)->opacity())
+SetLayerLocked::SetLayerLocked(Document *document,
+                               Layer *layer,
+                               bool locked)
+    : mDocument(document)
+    , mLayer(layer)
+    , mLocked(locked)
+{
+    if (locked)
+        setText(QCoreApplication::translate("Undo Commands",
+                                            "Lock Layer"));
+    else
+        setText(QCoreApplication::translate("Undo Commands",
+                                            "Unlock Layer"));
+}
+
+void SetLayerLocked::swap()
+{
+    const bool previousLocked = mLayer->isLocked();
+    mLayer->setLocked(mLocked);
+    mLocked = previousLocked;
+
+    emit mDocument->changed(LayerChangeEvent(mLayer, LayerChangeEvent::LockedProperty));
+}
+
+
+SetLayerOpacity::SetLayerOpacity(Document *document,
+                                 Layer *layer,
+                                 qreal opacity)
+    : mDocument(document)
+    , mLayer(layer)
+    , mOldOpacity(layer->opacity())
     , mNewOpacity(opacity)
 {
     setText(QCoreApplication::translate("Undo Commands",
@@ -69,18 +124,60 @@ SetLayerOpacity::SetLayerOpacity(MapDocument *mapDocument,
 bool SetLayerOpacity::mergeWith(const QUndoCommand *other)
 {
     const SetLayerOpacity *o = static_cast<const SetLayerOpacity*>(other);
-    if (!(mMapDocument == o->mMapDocument &&
-          mLayerIndex == o->mLayerIndex))
+    if (!(mDocument == o->mDocument &&
+          mLayer == o->mLayer))
         return false;
 
     mNewOpacity = o->mNewOpacity;
     return true;
 }
 
-void SetLayerOpacity::setOpacity(float opacity)
+void SetLayerOpacity::setOpacity(qreal opacity)
 {
-    mMapDocument->layerModel()->setLayerOpacity(mLayerIndex, opacity);
+    mLayer->setOpacity(opacity);
+    emit mDocument->changed(LayerChangeEvent(mLayer, LayerChangeEvent::OpacityProperty));
 }
 
-} // namespace Internal
+
+SetLayerOffset::SetLayerOffset(Document *document,
+                               Layer *layer,
+                               const QPointF &offset,
+                               QUndoCommand *parent)
+    : QUndoCommand(parent)
+    , mDocument(document)
+    , mLayer(layer)
+    , mOldOffset(layer->offset())
+    , mNewOffset(offset)
+{
+    setText(QCoreApplication::translate("Undo Commands",
+                                        "Change Layer Offset"));
+}
+
+void SetLayerOffset::setOffset(const QPointF &offset)
+{
+    mLayer->setOffset(offset);
+    emit mDocument->changed(LayerChangeEvent(mLayer, LayerChangeEvent::OffsetProperty));
+}
+
+SetTileLayerSize::SetTileLayerSize(Document *document,
+                                   TileLayer *tileLayer,
+                                   QSize size,
+                                   QUndoCommand *parent)
+    : QUndoCommand(parent)
+    , mDocument(document)
+    , mTileLayer(tileLayer)
+    , mSize(size)
+{
+    setText(QCoreApplication::translate("Undo Commands",
+                                        "Change Tile Layer Size"));
+}
+
+void SetTileLayerSize::swap()
+{
+    QSize oldSize = mTileLayer->size();
+    mTileLayer->setSize(mSize);
+    mSize = oldSize;
+    emit mDocument->changed(TileLayerChangeEvent(mTileLayer, TileLayerChangeEvent::SizeProperty));
+}
+
 } // namespace Tiled

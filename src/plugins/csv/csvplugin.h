@@ -18,37 +18,33 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CSVPLUGIN_H
-#define CSVPLUGIN_H
+#pragma once
 
-#include "mapwriterinterface.h"
+#include "mapformat.h"
 
 #include "csv_global.h"
 
 namespace Csv {
 
-class CSVSHARED_EXPORT CsvPlugin : public QObject,
-                                   public Tiled::MapWriterInterface
+class CSVSHARED_EXPORT CsvPlugin : public Tiled::WritableMapFormat
 {
     Q_OBJECT
-    Q_INTERFACES(Tiled::MapWriterInterface)
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapWriterInterface" FILE "plugin.json")
+    Q_PLUGIN_METADATA(IID "org.mapeditor.MapFormat" FILE "plugin.json")
 
 public:
     CsvPlugin();
 
-    // MapWriterInterface
-    bool write(const Tiled::Map *map, const QString &fileName);
-    QString errorString() const;
-    QStringList outputFiles(const Tiled::Map *map, const QString &fileName) const;
+    bool write(const Tiled::Map *map, const QString &fileName, Options options) override;
+    QString errorString() const override;
+    QStringList outputFiles(const Tiled::Map *map, const QString &fileName) const override;
+
+    QString shortName() const override;
 
 protected:
-    QString nameFilter() const;
+    QString nameFilter() const override;
 
 private:
     QString mError;
 };
 
 } // namespace Csv
-
-#endif // CSVPLUGIN_H

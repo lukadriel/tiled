@@ -27,22 +27,26 @@
 #include "mapscene.h"
 #include "tile.h"
 #include "tilelayer.h"
+#include "tilestamp.h"
 
-#include <cmath>
+#include <QKeyEvent>
+#include <QtMath>
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-AbstractTileTool::AbstractTileTool(const QString &name,
+AbstractTileTool::AbstractTileTool(Id id,
+                                   const QString &name,
                                    const QIcon &icon,
                                    const QKeySequence &shortcut,
+                                   BrushItem *brushItem,
                                    QObject *parent)
-    : AbstractTool(name, icon, shortcut, parent)
+    : AbstractTool(id, name, icon, shortcut, parent)
     , mTilePositionMethod(OnTiles)
-    , mBrushItem(new BrushItem)
-    , mTileX(0), mTileY(0)
+    , mBrushItem(brushItem)
     , mBrushVisible(false)
 {
+    if (!mBrushItem)
+        mBrushItem = new BrushItem;
     mBrushItem->setVisible(false);
     mBrushItem->setZValue(10000);
 }
@@ -74,23 +78,67 @@ void AbstractTileTool::mouseLeft()
 
 void AbstractTileTool::mouseMoved(const QPointF &pos, Qt::KeyboardModifiers)
 {
+    // Take into account the offset of the current layer
+    QPointF offsetPos = pos;
+    if (Layer *layer = currentLayer()) {
+        offsetPos -= layer->totalOffset();
+        mBrushItem->setLayerOffset(layer->totalOffset());
+    }
+
     const MapRenderer *renderer = mapDocument()->renderer();
-    const QPointF tilePosF = renderer->screenToTileCoords(pos);
+    const QPointF tilePosF = renderer->screenToTileCoords(offsetPos);
     QPoint tilePos;
 
     if (mTilePositionMethod == BetweenTiles)
         tilePos = tilePosF.toPoint();
     else
-        tilePos = QPoint((int) std::floor(tilePosF.x()),
-                         (int) std::floor(tilePosF.y()));
+        tilePos = QPoint(qFloor(tilePosF.x()),
+                         qFloor(tilePosF.y()));
 
-    if (mTileX != tilePos.x() || mTileY != tilePos.y()) {
-        mTileX = tilePos.x();
-        mTileY = tilePos.y();
+    if (mTilePosition != tilePos) {
+        mTilePosition = tilePos;
 
         tilePositionChanged(tilePos);
         updateStatusInfo();
     }
+}
+
+void AbstractTileTool::mousePressed(QGraphicsSceneMouseEvent *event)
+{
+    if (event->button() == Qt::RightButton && event->modifiers() & Qt::ControlModifier) {
+        const QPoint pos = tilePosition();
+        QList<Layer*> layers;
+
+        const bool append = event->modifiers() & Qt::ShiftModifier;
+        const bool selectAll = event->modifiers() & Qt::AltModifier;
+
+        if (append)
+            layers = mapDocument()->selectedLayers();
+
+        LayerIterator it(mapDocument()->map(), Layer::TileLayerType);
+        it.toBack();
+        while (auto tileLayer = static_cast<TileLayer*>(it.previous())) {
+            if (tileLayer->isHidden())
+                continue;
+
+            if (!tileLayer->cellAt(pos - tileLayer->position()).isEmpty()) {
+                if (!layers.contains(tileLayer))
+                    layers.append(tileLayer);
+                else if (append)
+                    layers.removeOne(tileLayer);
+
+                if (!selectAll)
+                    break;
+            }
+        }
+
+        if (!layers.isEmpty())
+            mapDocument()->switchSelectedLayers(layers);
+
+        return;
+    }
+
+    event->ignore();
 }
 
 void AbstractTileTool::mapDocumentChanged(MapDocument *oldDocument,
@@ -102,26 +150,112 @@ void AbstractTileTool::mapDocumentChanged(MapDocument *oldDocument,
 
 void AbstractTileTool::updateEnabledState()
 {
-    setEnabled(currentTileLayer() != 0);
+    setEnabled(currentTileLayer() != nullptr);
+    updateBrushVisibility();
 }
 
 void AbstractTileTool::updateStatusInfo()
 {
     if (mBrushVisible) {
-        Tile *tile = 0;
+        Cell cell;
 
         if (const TileLayer *tileLayer = currentTileLayer()) {
             const QPoint pos = tilePosition() - tileLayer->position();
-            if (tileLayer->contains(pos))
-                tile = tileLayer->cellAt(pos).tile;
+            cell = tileLayer->cellAt(pos);
         }
 
-        QString tileIdString = tile ? QString::number(tile->id()) : tr("empty");
+        QString tileIdString = cell.tileId() >= 0 ? QString::number(cell.tileId()) : tr("empty");
+
+        QVarLengthArray<QChar, 3> flippedBits;
+        if (cell.flippedHorizontally())
+            flippedBits.append(QLatin1Char('H'));
+        if (cell.flippedVertically())
+            flippedBits.append(QLatin1Char('V'));
+        if (cell.flippedAntiDiagonally())
+            flippedBits.append(QLatin1Char('D'));
+
+        if (!flippedBits.isEmpty()) {
+            tileIdString.append(QLatin1Char(' '));
+            tileIdString.append(flippedBits.first());
+            for (int i = 1; i < flippedBits.size(); ++i) {
+                tileIdString.append(QLatin1Char(','));
+                tileIdString.append(flippedBits.at(i));
+            }
+        }
+
         setStatusInfo(QString(QLatin1String("%1, %2 [%3]"))
-                      .arg(mTileX).arg(mTileY).arg(tileIdString));
+                      .arg(mTilePosition.x())
+                      .arg(mTilePosition.y())
+                      .arg(tileIdString));
     } else {
         setStatusInfo(QString());
     }
+}
+
+TileLayer *AbstractTileTool::currentTileLayer() const
+{
+    if (mapDocument())
+        if (auto currentLayer = mapDocument()->currentLayer())
+            return currentLayer->asTileLayer();
+    return nullptr;
+}
+
+void AbstractTileTool::updateBrushVisibility()
+{
+    // Show the tile brush only when at least one target layer is visible
+    bool showBrush = false;
+    if (mBrushVisible) {
+        const auto layers = targetLayers();
+        for (auto layer : layers) {
+            if (!layer->isHidden()) {
+                showBrush = true;
+                break;
+            }
+        }
+    }
+    mBrushItem->setVisible(showBrush);
+}
+
+QList<Layer *> AbstractTileTool::targetLayers() const
+{
+    // By default, only a current tile layer is considered the target
+    QList<Layer *> layers;
+    if (Layer *layer = currentTileLayer())
+        layers.append(layer);
+    return layers;
+}
+
+/**
+ * A helper method that returns the possible target layers of a given \a stamp.
+ */
+QList<Layer *> AbstractTileTool::targetLayersForStamp(const TileStamp &stamp) const
+{
+    QList<Layer*> layers;
+
+    if (!mapDocument())
+        return layers;
+
+    const Map &map = *mapDocument()->map();
+
+    for (const TileStampVariation &variation : stamp.variations()) {
+        LayerIterator it(variation.map, Layer::TileLayerType);
+        const Layer *firstLayer = it.next();
+        const bool isMultiLayer = firstLayer && it.next();
+
+        if (isMultiLayer && !firstLayer->name().isEmpty()) {
+            for (Layer *layer : variation.map->tileLayers()) {
+                TileLayer *target = static_cast<TileLayer*>(map.findLayer(layer->name(), Layer::TileLayerType));
+                if (!layers.contains(target))
+                    layers.append(target);
+            }
+        } else {
+            if (TileLayer *tileLayer = currentTileLayer())
+                if (!layers.contains(tileLayer))
+                    layers.append(tileLayer);
+        }
+    }
+
+    return layers;
 }
 
 void AbstractTileTool::setBrushVisible(bool visible)
@@ -132,25 +266,4 @@ void AbstractTileTool::setBrushVisible(bool visible)
     mBrushVisible = visible;
     updateStatusInfo();
     updateBrushVisibility();
-}
-
-void AbstractTileTool::updateBrushVisibility()
-{
-    // Show the tile brush only when a visible tile layer is selected
-    bool showBrush = false;
-    if (mBrushVisible) {
-        if (Layer *layer = currentTileLayer()) {
-            if (layer->isVisible())
-                showBrush = true;
-        }
-    }
-    mBrushItem->setVisible(showBrush);
-}
-
-TileLayer *AbstractTileTool::currentTileLayer() const
-{
-    if (!mapDocument())
-        return 0;
-
-    return dynamic_cast<TileLayer*>(mapDocument()->currentLayer());
 }

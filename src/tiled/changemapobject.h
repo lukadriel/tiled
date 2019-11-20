@@ -18,65 +18,158 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGEMAPOBJECT_H
-#define CHANGEMAPOBJECT_H
+#pragma once
+
+#include "mapobject.h"
+#include "tilelayer.h"
 
 #include <QUndoCommand>
+#include <QVector>
 
 namespace Tiled {
 
 class MapObject;
+class ObjectTemplate;
+class Tile;
 
-namespace Internal {
-
-class MapDocument;
-class MapObjectModel;
+class Document;
 
 class ChangeMapObject : public QUndoCommand
 {
 public:
     /**
-     * Creates an undo command that sets the given \a object's \a name and
-     * \a type.
+     * Creates an undo command that sets the given \a object's \a property to
+     * \a value.
      */
-    ChangeMapObject(MapDocument *mapDocument,
+    ChangeMapObject(Document *document,
                     MapObject *object,
-                    const QString &name,
-                    const QString &type);
+                    MapObject::Property property,
+                    const QVariant &value);
 
-    void undo() { swap(); }
-    void redo() { swap(); }
+    void undo() override { swap(); }
+    void redo() override { swap(); }
 
 private:
     void swap();
 
-    MapDocument *mMapDocument;
+    Document *mDocument;
     MapObject *mMapObject;
-    QString mName;
-    QString mType;
+    MapObject::Property mProperty;
+    QVariant mValue;
+    bool mOldChangeState;
+    bool mNewChangeState;
 };
 
-/**
- * Used for changing object visibility.
- */
-class SetMapObjectVisible : public QUndoCommand
+
+struct MapObjectCell
+{
+    MapObject *object;
+    Cell cell;
+    bool propertyChanged = true;
+};
+
+class ChangeMapObjectCells : public QUndoCommand
 {
 public:
-    SetMapObjectVisible(MapDocument *mapDocument,
-                        MapObject *mapObject,
-                        bool visible);
+    /**
+     * Creates an undo command that applies the given map object changes.
+     */
+    ChangeMapObjectCells(Document *document,
+                         const QVector<MapObjectCell> &changes,
+                         QUndoCommand *parent = nullptr);
 
-    void undo();
-    void redo();
+    void undo() override { swap(); }
+    void redo() override { swap(); }
 
 private:
-    MapObjectModel *mMapObjectModel;
-    MapObject *mMapObject;
-    bool mOldVisible;
-    bool mNewVisible;
+    void swap();
+
+    Document *mDocument;
+    QVector<MapObjectCell> mChanges;
 };
 
-} // namespace Internal
-} // namespace Tiled
+class ChangeMapObjectsTile : public QUndoCommand
+{
+public:
+    ChangeMapObjectsTile(Document *document,
+                         const QList<MapObject *> &mapObjects,
+                         Tile *tile);
 
-#endif // CHANGEMAPOBJECT_H
+    void undo() override;
+    void redo() override;
+
+private:
+    void changeTiles();
+    void restoreTiles();
+
+    Document *mDocument;
+    const QList<MapObject *> mMapObjects;
+    Tile * const mTile;
+    QVector<Cell> mOldCells;
+    QVector<bool> mUpdateSize;
+    QVector<bool> mOldChangeStates;
+};
+
+class DetachObjects : public QUndoCommand
+{
+public:
+    /**
+     * Creates an undo command that detaches the given template instances
+     * from their templates.
+     */
+    DetachObjects(Document *document,
+                  const QList<MapObject *> &mapObjects,
+                  QUndoCommand *parent = nullptr);
+
+    void redo() override;
+    void undo() override;
+
+private:
+    Document *mDocument;
+    const QList<MapObject*> mMapObjects;
+    QVector<const ObjectTemplate*> mObjectTemplates;
+    QVector<Properties> mProperties;
+};
+
+class ResetInstances : public QUndoCommand
+{
+public:
+    ResetInstances(Document *document,
+                   const QList<MapObject *> &mapObjects,
+                   QUndoCommand *parent = nullptr);
+
+    ~ResetInstances() override;
+
+    void redo() override;
+    void undo() override;
+
+private:
+    Document *mDocument;
+    const QList<MapObject*> mMapObjects;
+    QList<MapObject*> mOldMapObjects;
+};
+
+class ReplaceObjectsWithTemplate : public QUndoCommand
+{
+public:
+    /**
+     * Creates an undo command that replaces the given objects with a template
+     */
+    ReplaceObjectsWithTemplate(Document *document,
+                               const QList<MapObject *> &mapObjects,
+                               ObjectTemplate *objectTemplate,
+                               QUndoCommand *parent = nullptr);
+
+    ~ReplaceObjectsWithTemplate() override;
+
+    void redo() override;
+    void undo() override;
+
+private:
+    Document *mDocument;
+    const QList<MapObject*> mMapObjects;
+    QList<MapObject*> mOldMapObjects;
+    ObjectTemplate *mObjectTemplate;
+};
+
+} // namespace Tiled

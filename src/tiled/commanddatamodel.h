@@ -18,18 +18,15 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef COMMANDDATAMODEL_H
-#define COMMANDDATAMODEL_H
+#pragma once
 
 #include "command.h"
 
 #include <QAbstractTableModel>
-#include <QSettings>
 
 class QMenu;
 
 namespace Tiled {
-namespace Internal {
 
 class CommandDataModel : public QAbstractTableModel
 {
@@ -37,34 +34,20 @@ class CommandDataModel : public QAbstractTableModel
 
 public:
 
-    enum { NameColumn, CommandColumn, EnabledColumn };
+    enum { NameColumn, ShortcutColumn, EnabledColumn };
 
     /**
       * Constructs the object and parses the users settings to allow easy
       * programmatic access to the command list.
       */
-    CommandDataModel();
+    CommandDataModel(QObject *parent = nullptr);
 
     /**
       * Saves the data to the users preferences.
       */
     void commit();
 
-    /**
-      * Returns whether saving before executing commands is enabled.
-      */
-    bool saveBeforeExecute() const { return mSaveBeforeExecute; }
-
-    /**
-      * Enables or disables saving before executing commands.
-      */
-    void setSaveBeforeExecute(bool enabled) { mSaveBeforeExecute = enabled; }
-
-    /**
-      * Returns the first enabled command in the list, or an empty
-      * disabled command if there are no enabled commands.
-      */
-    Command firstEnabledCommand() const;
+    const Command *firstEnabledCommand() const;
 
     /**
       * Returns a list of all the commands.
@@ -75,7 +58,7 @@ public:
      * Remove the given row or rows from the model.
      */
     bool removeRows(int row, int count,
-                    const QModelIndex &parent = QModelIndex());
+                    const QModelIndex &parent = QModelIndex()) override;
 
     /**
       * Deletes the commands associated with the given row <i>indices</i>.
@@ -85,35 +68,35 @@ public:
     /**
      * Returns the number of rows (this includes the <New Command> row).
      */
-    int rowCount(const QModelIndex &) const;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
     /**
      * Returns the number of columns.
      */
-    int columnCount(const QModelIndex &) const;
+    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
 
     /**
      * Returns the data at <i>index</i> for the given <i>role</i>.
      */
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     /**
      * Sets the data at <i>index</i> to the given <i>value</i>.
      * for the given <i>role</i>
      */
-    bool setData(const QModelIndex &index, const QVariant &value, int role);
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override;
 
     /**
      * Returns flags for the item at <i>index</i>.
      */
-    Qt::ItemFlags flags(const QModelIndex &index) const;
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
 
     /**
      * Returns the header data for the given <i>section</i> and <i>role</i>.
      * <i>orientation</i> should be Qt::Horizontal.
      */
     QVariant headerData(int section, Qt::Orientation orientation,
-                        int role = Qt::EditRole) const;
+                        int role = Qt::EditRole) const override;
 
     /**
      * Returns a menu containing a list of appropriate actions for the item at
@@ -124,23 +107,32 @@ public:
     /**
      * Returns mime data for the first index in <i>indexes</i>.
      */
-    QMimeData *mimeData(const QModelIndexList &indexes) const;
+    QMimeData *mimeData(const QModelIndexList &indexes) const override;
 
     /**
      * Returns a list of mime types that can represent a command.
      */
-    QStringList mimeTypes() const;
+    QStringList mimeTypes() const override;
 
     /**
      * Returns the drop actions that can be performed.
      */
-    Qt::DropActions supportedDropActions() const;
+    Qt::DropActions supportedDropActions() const override;
 
     /**
      * Handles dropping of mime data onto <i>parent</i>.
      */
     bool dropMimeData(const QMimeData *data, Qt::DropAction action, int row,
-                      int column, const QModelIndex &parent);
+                      int column, const QModelIndex &parent) override;
+
+    void setExecutable(const QModelIndex &index, const QString &value);
+    void setArguments(const QModelIndex &index, const QString &value);
+    void setWorkingDirectory(const QModelIndex &index, const QString &value);
+    void setShortcut(const QModelIndex &index, const QKeySequence &value);
+    void setShowOutput(const QModelIndex &index, bool value);
+    void setSaveBeforeExecute(const QModelIndex &index, bool value);
+
+    Command command(const QModelIndex &index) const;
 
 public slots:
 
@@ -176,13 +168,7 @@ public slots:
     void remove(int commandIndex);
 
 private:
-
-    QSettings mSettings;
     QList<Command> mCommands;
-    bool mSaveBeforeExecute;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // COMMANDDATAMODEL_H

@@ -26,8 +26,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TERRAIN_H
-#define TERRAIN_H
+#pragma once
 
 #include "object.h"
 #include "tileset.h"
@@ -43,6 +42,8 @@ namespace Tiled {
  */
 class TILEDSHARED_EXPORT Terrain : public Object
 {
+    Q_OBJECT
+
 public:
     Terrain(int id,
             Tileset *tileset,
@@ -51,7 +52,7 @@ public:
         Object(TerrainType),
         mId(id),
         mTileset(tileset),
-        mName(name),
+        mName(std::move(name)),
         mImageTileId(imageTileId)
     {
     }
@@ -72,6 +73,8 @@ public:
     int transitionDistance(int targetTerrainType) const;
     void setTransitionDistance(int targetTerrainType, int distance);
     void setTransitionDistances(const QVector<int> &transitionDistances);
+
+    Terrain *clone(Tileset *tileset) const;
 
 private:
     int mId;
@@ -144,7 +147,7 @@ inline void Terrain::setImageTileId(int imageTileId)
  */
 inline Tile *Terrain::imageTile() const
 {
-    return mImageTileId >= 0 ? mTileset->tileAt(mImageTileId) : 0;
+    return mTileset->findTile(mImageTileId);
 }
 
 /**
@@ -171,8 +174,17 @@ inline void Terrain::setTransitionDistances(const QVector<int> &transitionDistan
     mTransitionDistance = transitionDistances;
 }
 
+/**
+ * Returns a duplicate of this terrain, to be added to the given \a tileset.
+ */
+inline Terrain *Terrain::clone(Tileset *tileset) const
+{
+    Terrain *c = new Terrain(mId, tileset, mName, mImageTileId);
+    c->setProperties(properties());
+    c->mTransitionDistance = mTransitionDistance;
+    return c;
+}
+
 } // namespace Tiled
 
 Q_DECLARE_METATYPE(Tiled::Terrain*)
-
-#endif // TERRAIN_H

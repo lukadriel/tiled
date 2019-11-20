@@ -19,8 +19,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILESTAMPMANAGER_H
-#define TILESTAMPMANAGER_H
+#pragma once
 
 #include "tilestamp.h"
 
@@ -32,8 +31,6 @@ namespace Tiled {
 
 class Map;
 class TileLayer;
-
-namespace Internal {
 
 class MapDocument;
 class TileStamp;
@@ -50,7 +47,7 @@ class TileStampManager : public QObject
     Q_OBJECT
 
 public:
-    TileStampManager(const ToolManager &toolManager, QObject *parent = 0);
+    TileStampManager(const ToolManager &toolManager, QObject *parent = nullptr);
     ~TileStampManager();
 
     static QList<Qt::Key> quickStampKeys();
@@ -78,13 +75,12 @@ private:
 
     void loadStamps();
 
-private slots:
+private:
     void stampAdded(TileStamp stamp);
     void stampRenamed(TileStamp stamp);
     void saveStamp(const TileStamp &stamp);
     void deleteStamp(const TileStamp &stamp);
 
-private:
     QVector<TileStamp> mQuickStamps;
     QMap<QString, TileStamp> mStampsByName;
     TileStampModel *mTileStampModel;
@@ -100,17 +96,17 @@ private:
  */
 inline QList<Qt::Key> TileStampManager::quickStampKeys()
 {
-    QList<Qt::Key> keys;
-    keys << Qt::Key_1
-         << Qt::Key_2
-         << Qt::Key_3
-         << Qt::Key_4
-         << Qt::Key_5
-         << Qt::Key_6
-         << Qt::Key_7
-         << Qt::Key_8
-         << Qt::Key_9;
-    return keys;
+    return {
+        Qt::Key_1,
+        Qt::Key_2,
+        Qt::Key_3,
+        Qt::Key_4,
+        Qt::Key_5,
+        Qt::Key_6,
+        Qt::Key_7,
+        Qt::Key_8,
+        Qt::Key_9
+    };
 }
 
 inline TileStampModel *TileStampManager::tileStampModel() const
@@ -118,7 +114,4 @@ inline TileStampModel *TileStampManager::tileStampModel() const
     return mTileStampModel;
 }
 
-} // namespace Tiled::Internal
 } // namespace Tiled
-
-#endif // TILESTAMPMANAGER_H

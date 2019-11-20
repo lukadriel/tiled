@@ -26,8 +26,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MAPRENDERER_H
-#define MAPRENDERER_H
+#pragma once
 
 #include "tiled_global.h"
 
@@ -44,7 +43,8 @@ class TileLayer;
 class ImageLayer;
 
 enum RenderFlag {
-    ShowTileObjectOutlines = 0x1
+    ShowTileObjectOutlines = 0x1,
+    ShowTileCollisionShapes = 0x2
 };
 
 Q_DECLARE_FLAGS(RenderFlags, RenderFlag)
@@ -59,12 +59,12 @@ class TILEDSHARED_EXPORT MapRenderer
 public:
     MapRenderer(const Map *map)
         : mMap(map)
-        , mFlags(0)
+        , mFlags(nullptr)
         , mObjectLineWidth(2)
         , mPainterScale(1)
     {}
 
-    virtual ~MapRenderer() {}
+    virtual ~MapRenderer();
 
     /**
      * Returns the map this renderer is associated with.
@@ -72,9 +72,10 @@ public:
     const Map *map() const;
 
     /**
-     * Returns the size in pixels of the map associated with this renderer.
+     * Returns the bounding rectangle in pixels of the map associated with
+     * this renderer.
      */
-    virtual QSize mapSize() const = 0;
+    virtual QRect mapBoundingRect() const = 0;
 
     /**
      * Returns the bounding rectangle in pixels of the given \a rect given in
@@ -99,10 +100,28 @@ public:
 
     /**
      * Returns the shape in pixels of the given \a object. This is used for
-     * mouse interaction and should match the rendered object as closely as
-     * possible.
+     * rendering shape objects.
      */
     virtual QPainterPath shape(const MapObject *object) const = 0;
+
+    /**
+     * Returns the interaction shape in pixels of the given \a object. This is
+     * used for mouse interaction and should match the rendered object as
+     * closely as possible.
+     */
+    virtual QPainterPath interactionShape(const MapObject *object) const = 0;
+
+    /**
+     * Returns the shape of a point object at the given \a position, conforming
+     * to the shape() method requirements.
+     */
+    QPainterPath pointShape(const QPointF &position) const;
+
+    /**
+     * Returns the interaction shape of the given point \a object, conforming
+     * to the interactionShape() method requirements.
+     */
+    QPainterPath pointInteractionShape(const MapObject *object) const;
 
     /**
      * Draws the tile grid in the specified \a rect using the given
@@ -139,6 +158,11 @@ public:
                                const QColor &color) const = 0;
 
     /**
+     * Draws the a pin in the given \a color using the \a painter.
+     */
+    void drawPointObject(QPainter *painter, const QColor &color) const;
+
+    /**
      * Draws the given image \a layer using the given \a painter.
      */
     void drawImageLayer(QPainter *painter,
@@ -159,6 +183,14 @@ public:
         for (int i = polygon.size() - 1; i >= 0; --i)
             screenPolygon[i] = pixelToScreenCoords(polygon[i]);
         return screenPolygon;
+    }
+
+    QPolygonF screenToPixelCoords(const QPolygonF &polygon) const
+    {
+        QPolygonF pixelPolygon(polygon.size());
+        for (int i = polygon.size() - 1; i >= 0; --i)
+            pixelPolygon[i] = screenToPixelCoords(polygon[i]);
+        return pixelPolygon;
     }
 
     /**
@@ -214,6 +246,9 @@ public:
 
     static QPolygonF lineToPolygon(const QPointF &start, const QPointF &end);
 
+protected:
+    QPen makeGridPen(const QPaintDevice *device, QColor color) const;
+
 private:
     const Map *mMap;
 
@@ -259,7 +294,13 @@ public:
         BottomCenter
     };
 
-    explicit CellRenderer(QPainter *painter);
+    enum CellType {
+        OrthogonalCells,
+        HexagonalCells
+    };
+
+    explicit CellRenderer(QPainter *painter, const MapRenderer *renderer,
+                          CellType cellType = OrthogonalCells);
 
     ~CellRenderer() { flush(); }
 
@@ -267,14 +308,16 @@ public:
     void flush();
 
 private:
+    void paintTileCollisionShapes();
+
     QPainter * const mPainter;
-    Tile *mTile;
+    const MapRenderer * const mRenderer;
+    const Tile *mTile;
     QVector<QPainter::PixmapFragment> mFragments;
     const bool mIsOpenGL;
+    const CellType mCellType;
 };
 
 } // namespace Tiled
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(Tiled::RenderFlags)
-
-#endif // MAPRENDERER_H

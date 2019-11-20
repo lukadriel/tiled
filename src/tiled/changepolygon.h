@@ -18,18 +18,20 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGEPOLYGON_H
-#define CHANGEPOLYGON_H
+#pragma once
+
+#include "addremovemapobject.h"
 
 #include <QPolygonF>
 #include <QUndoCommand>
+
+#include <memory>
 
 namespace Tiled {
 
 class MapObject;
 
-namespace Internal {
-
+class Document;
 class MapDocument;
 
 /**
@@ -41,27 +43,61 @@ class MapDocument;
 class ChangePolygon : public QUndoCommand
 {
 public:
-    ChangePolygon(MapDocument *mapDocument,
+    ChangePolygon(Document *document,
                   MapObject *mapObject,
                   const QPolygonF &oldPolygon);
 
-    ChangePolygon(MapDocument *mapDocument,
+    ChangePolygon(Document *document,
                   MapObject *mapObject,
                   const QPolygonF &newPolygon,
                   const QPolygonF &oldPolygon);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
-    MapDocument *mMapDocument;
+    Document *mDocument;
     MapObject *mMapObject;
 
     QPolygonF mOldPolygon;
     QPolygonF mNewPolygon;
+    bool mOldChangeState;
 };
 
-} // namespace Internal
-} // namespace Tiled
+// TODO: Merge into ChangePolygon
+class TogglePolygonPolyline : public QUndoCommand
+{
+public:
+    TogglePolygonPolyline(MapObject *mapObject);
 
-#endif // CHANGEPOLYGON_H
+    void undo() override { toggle(); }
+    void redo() override { toggle(); }
+
+private:
+    void toggle();
+
+    MapObject *mMapObject;
+};
+
+class SplitPolyline : public QUndoCommand
+{
+public:
+    SplitPolyline(MapDocument *mapDocument,
+                  MapObject *mapObject,
+                  int edgeIndex);
+    ~SplitPolyline() override;
+
+    void undo() override;
+    void redo() override;
+
+private:
+    MapDocument *mMapDocument;
+    MapObject *mFirstPolyline;
+    MapObject *mSecondPolyline;
+    std::unique_ptr<AddMapObjects> mAddSecondPolyline;
+
+    int mEdgeIndex;
+    bool mOldChangeState;
+};
+
+} // namespace Tiled

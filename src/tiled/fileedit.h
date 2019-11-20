@@ -19,8 +19,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FILEEDIT_H
-#define FILEEDIT_H
+#pragma once
 
 #include <QValidator>
 #include <QWidget>
@@ -28,7 +27,6 @@
 class QLineEdit;
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * A widget that combines a line edit with a button to choose a file.
@@ -38,35 +36,32 @@ class FileEdit : public QWidget
     Q_OBJECT
 
 public:
-    explicit FileEdit(QWidget *parent = 0);
+    explicit FileEdit(QWidget *parent = nullptr);
 
-    void setFilePath(const QString &filePath);
-    QString filePath() const;
+    void setFileUrl(const QUrl &url);
+    QUrl fileUrl() const;
 
     void setFilter(const QString &filter) { mFilter = filter; }
     QString filter() const { return mFilter; }
 
 signals:
-    void filePathChanged(const QString &filePath);
+    void fileUrlChanged(const QUrl &url);
 
 protected:
-    void focusInEvent(QFocusEvent *e);
-    void focusOutEvent(QFocusEvent *e);
-    void keyPressEvent(QKeyEvent *e);
-    void keyReleaseEvent(QKeyEvent *e);
-
-private slots:
-    void validate(const QString &);
-    void buttonClicked();
+    void focusInEvent(QFocusEvent *e) override;
+    void focusOutEvent(QFocusEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
+    void keyReleaseEvent(QKeyEvent *e) override;
 
 private:
+    void textEdited();
+    void validate();
+    void buttonClicked();
+
     QLineEdit *mLineEdit;
     QString mFilter;
     QColor mOkTextColor;
     QColor mErrorTextColor;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // FILEEDIT_H

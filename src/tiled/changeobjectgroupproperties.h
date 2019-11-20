@@ -19,8 +19,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGEOBJECTGROUPPROPERTIES_H
-#define CHANGEOBJECTGROUPPROPERTIES_H
+#pragma once
 
 #include "objectgroup.h"
 
@@ -28,9 +27,8 @@
 #include <QUndoCommand>
 
 namespace Tiled {
-namespace Internal {
 
-class MapDocument;
+class Document;
 
 class ChangeObjectGroupProperties : public QUndoCommand
 {
@@ -42,16 +40,16 @@ public:
      * @param objectGroup     the object group in to modify
      * @param newColor        the new color to apply
      */
-    ChangeObjectGroupProperties(MapDocument *mapDocument,
+    ChangeObjectGroupProperties(Document *document,
                                 ObjectGroup *objectGroup,
                                 const QColor &newColor,
                                 ObjectGroup::DrawOrder newDrawOrder);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
-    MapDocument *mMapDocument;
+    Document *mDocument;
     ObjectGroup *mObjectGroup;
     const QColor mUndoColor;
     const QColor mRedoColor;
@@ -59,7 +57,4 @@ private:
     ObjectGroup::DrawOrder mRedoDrawOrder;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // CHANGEOBJECTGROUPPROPERTIES_H

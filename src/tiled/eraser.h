@@ -18,13 +18,11 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ERASER_H
-#define ERASER_H
+#pragma once
 
 #include "abstracttiletool.h"
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * Implements a simple eraser tool.
@@ -34,24 +32,29 @@ class Eraser : public AbstractTileTool
     Q_OBJECT
 
 public:
-    Eraser(QObject *parent = 0);
+    Eraser(QObject *parent = nullptr);
 
-    void mousePressed(QGraphicsSceneMouseEvent *event);
-    void mouseReleased(QGraphicsSceneMouseEvent *event);
+    void mousePressed(QGraphicsSceneMouseEvent *event) override;
+    void mouseReleased(QGraphicsSceneMouseEvent *event) override;
 
-    void languageChanged();
+    void languageChanged() override;
 
 protected:
-    void tilePositionChanged(const QPoint &tilePos);
+    void tilePositionChanged(QPoint tilePos) override;
 
 private:
     void doErase(bool continuation);
+    QRect eraseArea() const;
 
-    bool mErasing;
+    enum Mode {
+        Nothing,
+        Erase,
+        RectangleErase
+    };
+
+    Mode mMode;
     QPoint mLastTilePos;
+    QPoint mStart;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ERASER_H

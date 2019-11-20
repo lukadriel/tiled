@@ -21,50 +21,57 @@
 #include "createscalableobjecttool.h"
 
 #include "mapdocument.h"
+#include "mapobject.h"
 #include "mapobjectitem.h"
 #include "maprenderer.h"
 #include "snaphelper.h"
 #include "utils.h"
 
 using namespace Tiled;
-using namespace Tiled::Internal;
 
-CreateScalableObjectTool::CreateScalableObjectTool(QObject *parent)
-    : CreateObjectTool(CreateObjectTool::CreateGeometry, parent)
+CreateScalableObjectTool::CreateScalableObjectTool(Id id, QObject *parent)
+    : CreateObjectTool(id, parent)
 {
+}
+
+bool CreateScalableObjectTool::startNewMapObject(const QPointF &pos, ObjectGroup *objectGroup)
+{
+    mStartPos = pos;
+    return CreateObjectTool::startNewMapObject(pos, objectGroup);
+}
+
+static qreal sign(qreal value)
+{
+    return value < 0 ? -1 : 1;
 }
 
 void CreateScalableObjectTool::mouseMovedWhileCreatingObject(const QPointF &pos, Qt::KeyboardModifiers modifiers)
 {
     const MapRenderer *renderer = mapDocument()->renderer();
+    QPointF pixelCoords = renderer->screenToPixelCoords(pos);
 
-    const QPointF pixelCoords = renderer->screenToPixelCoords(pos);
+    if (state() == Preview) {
+        SnapHelper(renderer, modifiers).snap(pixelCoords);
+        mStartPos = pixelCoords;
+    }
 
-    // Update the size of the new map object
-    const QPointF objectPos = mNewMapObjectItem->mapObject()->position();
-    QPointF newSize(qMax(qreal(0), pixelCoords.x() - objectPos.x()),
-                    qMax(qreal(0), pixelCoords.y() - objectPos.y()));
+    QRectF objectArea(mStartPos, pixelCoords);
 
     // Holding shift creates circle or square
     if (modifiers & Qt::ShiftModifier) {
-        qreal max = qMax(newSize.x(), newSize.y());
-        newSize.setX(max);
-        newSize.setY(max);
+        qreal max = qMax(qAbs(objectArea.width()), qAbs(objectArea.height()));
+        objectArea.setWidth(max * sign(objectArea.width()));
+        objectArea.setHeight(max * sign(objectArea.height()));
     }
 
-    SnapHelper(renderer, modifiers).snap(newSize);
+    // Update the position and size of the new map object
+    QPointF snapSize(objectArea.width(), objectArea.height());
+    SnapHelper(renderer, modifiers).snap(snapSize);
+    objectArea.setWidth(snapSize.x());
+    objectArea.setHeight(snapSize.y());
 
-    mNewMapObjectItem->resizeObject(QSizeF(newSize.x(), newSize.y()));
-}
-
-void CreateScalableObjectTool::mousePressedWhileCreatingObject(QGraphicsSceneMouseEvent *event)
-{
-    if (event->button() == Qt::RightButton)
-        cancelNewMapObject();
-}
-
-void CreateScalableObjectTool::mouseReleasedWhileCreatingObject(QGraphicsSceneMouseEvent *event)
-{
-    if (event->button() == Qt::LeftButton)
-        finishNewMapObject();
+    // Not using the MapObjectModel because the object is not actually part of
+    // the map yet
+    mNewMapObjectItem->mapObject()->setBounds(objectArea.normalized());
+    mNewMapObjectItem->syncWithMapObject();
 }

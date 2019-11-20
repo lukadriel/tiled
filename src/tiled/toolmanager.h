@@ -18,16 +18,17 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TOOLMANAGER_H
-#define TOOLMANAGER_H
+#pragma once
 
+#include <QActionGroup>
 #include <QObject>
 
 class QAction;
-class QActionGroup;
 
 namespace Tiled {
-namespace Internal {
+
+class Tile;
+class ObjectTemplate;
 
 class AbstractTool;
 class MapDocument;
@@ -42,19 +43,41 @@ class MapDocument;
 class ToolManager : public QObject
 {
     Q_OBJECT
+    Q_DISABLE_COPY(ToolManager)
 
 public:
-    ToolManager(QObject *parent = 0);
-    ~ToolManager();
+    ToolManager(QObject *parent = nullptr);
+    ~ToolManager() override;
+
+    void setRegisterActions(bool enabled);
 
     void setMapDocument(MapDocument *mapDocument);
 
     QAction *registerTool(AbstractTool *tool);
+    void unregisterTool(AbstractTool *tool);
 
-    void selectTool(AbstractTool *tool);
+    bool selectTool(AbstractTool *tool);
     AbstractTool *selectedTool() const;
 
+    template<typename Tool>
+    Tool *findTool();
+
+    QAction *findAction(AbstractTool *tool) const;
+
     void retranslateTools();
+
+    void createShortcuts(QWidget *parent);
+
+    Tile *tile() const;
+    ObjectTemplate *objectTemplate() const;
+
+public slots:
+    /**
+     * Sets the tile that will be used when the creation mode is
+     * CreateTileObjects or when replacing a tile of a tile object.
+     */
+    void setTile(Tile *tile);
+    void setObjectTemplate(ObjectTemplate *objectTemplate);
 
 signals:
     void selectedToolChanged(AbstractTool *tool);
@@ -67,21 +90,42 @@ signals:
 
 private slots:
     void actionTriggered(QAction *action);
+    void toolChanged();
+    void toolActionChanged();
     void toolEnabledChanged(bool enabled);
     void selectEnabledTool();
 
 private:
-    Q_DISABLE_COPY(ToolManager)
-
     AbstractTool *firstEnabledTool() const;
     void setSelectedTool(AbstractTool *tool);
 
     QActionGroup *mActionGroup;
-    AbstractTool *mSelectedTool;
-    AbstractTool *mPreviouslyDisabledTool;
-    MapDocument *mMapDocument;
+    AbstractTool *mSelectedTool = nullptr;
+    AbstractTool *mDisabledTool = nullptr;
+    AbstractTool *mPreviouslyDisabledTool = nullptr;
+    MapDocument *mMapDocument = nullptr;
+    Tile *mTile = nullptr;
+    ObjectTemplate *mObjectTemplate = nullptr;
+
+    bool mRegisterActions = true;
+    bool mSelectEnabledToolPending = false;
+    bool mUpdatingActionToolTip = false;
 };
 
+/**
+ * Selects the tool that matches the specified type.
+ */
+template<class Tool>
+Tool *ToolManager::findTool()
+{
+    const auto actions = mActionGroup->actions();
+    for (QAction *action : actions) {
+        AbstractTool *abstractTool = action->data().value<AbstractTool*>();
+        if (Tool *tool = qobject_cast<Tool*>(abstractTool))
+            return tool;
+    }
+    return nullptr;
+}
 
 /**
  * Returns the selected tool.
@@ -91,7 +135,24 @@ inline AbstractTool *ToolManager::selectedTool() const
     return mSelectedTool;
 }
 
-} // namespace Internal
-} // namespace Tiled
+inline Tile *ToolManager::tile() const
+{
+    return mTile;
+}
 
-#endif // TOOLMANAGER_H
+inline ObjectTemplate *ToolManager::objectTemplate() const
+{
+    return mObjectTemplate;
+}
+
+inline void ToolManager::setTile(Tile *tile)
+{
+    mTile = tile;
+}
+
+inline void ToolManager::setObjectTemplate(ObjectTemplate *objectTemplate)
+{
+    mObjectTemplate = objectTemplate;
+}
+
+} // namespace Tiled

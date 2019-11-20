@@ -19,15 +19,13 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef COMMANDLINEPARSER_H
-#define COMMANDLINEPARSER_H
+#pragma once
 
 #include <QCoreApplication>
 #include <QStringList>
 #include <QVector>
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * C-style callback function taking an arbitrary data pointer.
@@ -55,7 +53,7 @@ void MemberFunctionCall(void *object)
  */
 class CommandLineParser
 {
-    Q_DECLARE_TR_FUNCTIONS(CommandLineParser);
+    Q_DECLARE_TR_FUNCTIONS(CommandLineParser)
 
 public:
     CommandLineParser();
@@ -105,7 +103,7 @@ public:
     const QStringList &filesToOpen() const { return mFilesToOpen; }
 
 private:
-    void showHelp();
+    void showHelp() const;
 
     bool handleLongOption(const QString &longName);
     bool handleShortOption(QChar c);
@@ -116,20 +114,20 @@ private:
     struct Option
     {
         Option()
-            : callback(0)
-            , data(0)
+            : callback(nullptr)
+            , data(nullptr)
         {}
 
         Option(Callback callback,
                void *data,
                QChar shortName,
-               const QString &longName,
-               const QString &help)
+               QString longName,
+               QString help)
             : callback(callback)
             , data(data)
             , shortName(shortName)
-            , longName(longName)
-            , help(help)
+            , longName(std::move(longName))
+            , help(std::move(help))
         {}
 
         Callback callback;
@@ -146,7 +144,4 @@ private:
     bool mShowHelp;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // COMMANDLINEPARSER_H

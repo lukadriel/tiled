@@ -18,26 +18,26 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CREATEELLIPSEOBJECTTOOL_H
-#define CREATEELLIPSEOBJECTTOOL_H
+#pragma once
 
 #include "createscalableobjecttool.h"
 
 namespace Tiled {
 
-namespace Internal {
-
 class CreateEllipseObjectTool : public CreateScalableObjectTool
 {
     Q_OBJECT
+
 public:
     CreateEllipseObjectTool(QObject *parent);
-    void languageChanged();
+
+    void languageChanged() override;
+
 protected:
-    MapObject *createNewMapObject();
+    MapObject *createNewMapObject() override;
+
+private:
+    void languageChangedImpl();
 };
 
-}
-}
-
-#endif // CREATEELLIPSEOBJECTTOOL_H
+} // namespace Tiled

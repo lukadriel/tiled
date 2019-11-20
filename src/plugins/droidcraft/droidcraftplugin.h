@@ -18,46 +18,36 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef DROIDCRAFTPLUGIN_H
-#define DROIDCRAFTPLUGIN_H
+#pragma once
 
 #include "droidcraft_global.h"
 
 #include "map.h"
-#include "mapwriterinterface.h"
-#include "mapreaderinterface.h"
+#include "mapformat.h"
 
 #include <QObject>
 
 namespace Droidcraft {
 
-class DROIDCRAFTSHARED_EXPORT DroidcraftPlugin :
-        public QObject,
-        public Tiled::MapWriterInterface,
-        public Tiled::MapReaderInterface
+class DROIDCRAFTSHARED_EXPORT DroidcraftPlugin : public Tiled::MapFormat
 {
     Q_OBJECT
-    Q_INTERFACES(Tiled::MapReaderInterface)
-    Q_INTERFACES(Tiled::MapWriterInterface)
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapWriterInterface" FILE "plugin.json")
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapReaderInterface" FILE "plugin.json")
+    Q_INTERFACES(Tiled::MapFormat)
+    Q_PLUGIN_METADATA(IID "org.mapeditor.MapFormat" FILE "plugin.json")
 
 public:
     DroidcraftPlugin();
 
-    // MapReaderInterface
-    Tiled::Map *read(const QString &fileName);
-    bool supportsFile(const QString &fileName) const;
+    std::unique_ptr<Tiled::Map> read(const QString &fileName) override;
+    bool supportsFile(const QString &fileName) const override;
 
-    // MapWriterInterface
-    bool write(const Tiled::Map *map, const QString &fileName);
-    QString nameFilter() const;
-    QString errorString() const;
+    bool write(const Tiled::Map *map, const QString &fileName, Options options) override;
+    QString nameFilter() const override;
+    QString shortName() const override;
+    QString errorString() const override;
 
 private:
     QString mError;
 };
 
 } // namespace Droidcraft
-
-#endif // DROIDCRAFTPLUGIN_H

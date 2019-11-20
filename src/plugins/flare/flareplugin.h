@@ -19,46 +19,36 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FLAREPLUGIN_H
-#define FLAREPLUGIN_H
+#pragma once
 
 #include "flare_global.h"
 
-#include "mapwriterinterface.h"
-#include "mapreaderinterface.h"
+#include "mapformat.h"
 
 #include <QObject>
 #include <QMap>
 
 namespace Flare {
 
-class FLARESHARED_EXPORT FlarePlugin
-        : public QObject
-        , public Tiled::MapWriterInterface
-        , public Tiled::MapReaderInterface
+class FLARESHARED_EXPORT FlarePlugin : public Tiled::MapFormat
 {
     Q_OBJECT
-    Q_INTERFACES(Tiled::MapWriterInterface)
-    Q_INTERFACES(Tiled::MapReaderInterface)
-
-    Q_PLUGIN_METADATA(IID "org.mapeditor.MapWriterInterface" FILE "plugin.json")
+    Q_INTERFACES(Tiled::MapFormat)
+    Q_PLUGIN_METADATA(IID "org.mapeditor.MapFormat" FILE "plugin.json")
 
 public:
     FlarePlugin();
 
-    // MapReaderInterface
-    Tiled::Map *read(const QString &fileName);
-    bool supportsFile(const QString &fileName) const;
+    std::unique_ptr<Tiled::Map> read(const QString &fileName) override;
+    bool supportsFile(const QString &fileName) const override;
 
-    // MapWriterInterface
-    bool write(const Tiled::Map *map, const QString &fileName);
-    QString nameFilter() const;
-    QString errorString() const;
+    bool write(const Tiled::Map *map, const QString &fileName, Options options) override;
+    QString nameFilter() const override;
+    QString shortName() const override;
+    QString errorString() const override;
 
 private:
     QString mError;
 };
 
 } // namespace Flare
-
-#endif // FLAREPLUGIN_H

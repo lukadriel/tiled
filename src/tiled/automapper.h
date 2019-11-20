@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef AUTOMAPPER_H
-#define AUTOMAPPER_H
+#pragma once
 
 #include "tileset.h"
 
@@ -30,6 +29,8 @@
 #include <QString>
 #include <QVector>
 
+#include <memory>
+
 namespace Tiled {
 
 class Layer;
@@ -38,27 +39,28 @@ class MapObject;
 class ObjectGroup;
 class TileLayer;
 
-namespace Internal {
-
 class MapDocument;
 
-class InputIndexName
+struct InputLayer
 {
-public:
-    QVector<TileLayer*> listYes;
-    QVector<TileLayer*> listNo;
+    TileLayer *tileLayer;
+    bool strictEmpty;
 };
 
-class InputIndex : public QMap<QString, InputIndexName>
+class InputConditions
 {
 public:
-    QSet<QString> names;
+    QVector<InputLayer> listYes;    // "input"
+    QVector<InputLayer> listNo;     // "inputnot"
 };
 
+// Maps layer names to their conditions
+typedef QMap<QString, InputConditions> InputIndex;
+
+// Maps an index to a group of input layers
 class InputLayers : public QMap<QString, InputIndex>
 {
 public:
-    QSet<QString> indexes;
     QSet<QString> names; // all names
 };
 
@@ -82,31 +84,73 @@ class AutoMapper : public QObject
     Q_OBJECT
 
 public:
+    struct Options
+    {
+        /**
+         * Determines if all tiles in all touched layers should be deleted first.
+         */
+        bool deleteTiles = false;
+
+        /**
+         * Whether rules can match when their input region is partially outside
+         * of the map.
+         */
+        bool matchOutsideMap = true;
+
+        /**
+         * If "matchOutsideMap" is true, treat the out-of-bounds tiles as if they
+         * were the nearest inbound tile possible
+         */
+        bool overflowBorder = false;
+
+        /**
+         * If "matchOutsideMap" is true, wrap the map in the edges to apply the
+         * automapping rules
+         */
+        bool wrapBorder = false;
+
+        /**
+         * Determines if a rule is allowed to overlap itself.
+         */
+        bool noOverlappingRules = false;
+
+        /**
+         * This variable determines, how many overlapping tiles should be used.
+         * The bigger the more area is remapped at an automapping operation.
+         * This can lead to higher latency, but provides a better behavior on
+         * interactive automapping.
+         */
+        int autoMappingRadius = 0;
+    };
+
     /**
      * Constructs an AutoMapper.
+     *
      * All data structures, which only rely on the rules map are setup
-     * here. 
-     * 
+     * here.
+     *
      * @param workingDocument: the map to work on.
-     * @param rules: The rule map which should be used for automapping
+     * @param rules: The rule map which should be used for automapping. The
+     *               AutoMapper takes ownership of this map.
      * @param rulePath: The filepath to the rule map.
      */
-    AutoMapper(MapDocument *workingDocument, Map *rules, 
+    AutoMapper(MapDocument *workingDocument,
+               std::unique_ptr<Map> rules,
                const QString &rulePath);
     ~AutoMapper();
 
     /**
-     * Checks if the passed \a ruleLayerName is used in this instance 
+     * Checks if the passed \a ruleLayerName is used in this instance
      * of Automapper.
      */
-    bool ruleLayerNameUsed(QString ruleLayerName) const;
+    bool ruleLayerNameUsed(const QString &ruleLayerName) const;
 
     /**
      * Call prepareLoad first! Returns a set of strings describing the tile
      * layers, which could be touched considering the given layers of the
      * rule map.
      */
-    QSet<QString> getTouchedTileLayers() const;
+    QSet<QString> touchedTileLayers() const;
 
     /**
      * This needs to be called directly before the autoMap call.
@@ -146,6 +190,7 @@ private:
      * @return returns true when anything is ok, false when errors occurred.
      */
     bool setupRuleMapProperties();
+    void setupInputLayerProperties(InputLayer &inputLayer);
 
     void cleanUpRulesMap();
 
@@ -179,52 +224,47 @@ private:
     /**
      * sets up the tilesets which are used in automapping.
      * @return returns true when anything is ok, false when errors occurred.
-     *        (in that case will be a msg box anyway)
      */
-    bool setupTilesets(Map *src, Map *dst);
+    bool setupTilesets();
 
     /**
-     * Returns the conjunction of of all regions of all setlayers
+     * Returns the conjunction of all regions of all setlayers.
      */
-    const QRegion getSetLayersRegion();
+    QRegion computeSetLayersRegion() const;
 
     /**
-     * This copies all Tiles from TileLayer src to TileLayer dst
+     * This copies all tiles from TileLayer \a srcLayer to TileLayer
+     * \a dstLayer.
      *
-     * In src the Tiles are taken from the rectangle given by
-     * src_x, src_y, width and height.
+     * In src the tiles are taken from the \a rect.
      * In dst they get copied to a rectangle given by
-     * dst_x, dst_y, width, height .
+     * \a dstX, \a dstY and the size of \a rect.
      * if there is no tile in src TileLayer, there will nothing be copied,
      * so the maybe existing tile in dst will not be overwritten.
-     *
      */
-    void copyTileRegion(TileLayer *src_lr, int src_x, int src_y,
-                        int width, int height, TileLayer *dst_lr,
-                        int dst_x, int dst_y);
+    void copyTileRegion(const TileLayer *srcLayer, QRect rect, TileLayer *dstLayer,
+                        int dstX, int dstY);
 
     /**
      * This copies all objects from the \a src_lr ObjectGroup to the \a dst_lr
-     * in the given rectangle.
+     * in the given \a rect.
      *
-     * The rectangle is described by the upper left corner \a src_x \a src_y
-     * and its \a width and \a height. The parameter \a dst_x and \a dst_y
-     * offset the copied objects in the destination object group.
+     * The parameter \a dstX and \a dstY offset the copied objects in the
+     * destination object group.
      */
-    void copyObjectRegion(ObjectGroup *src_lr, int src_x, int src_y,
-                          int width, int height, ObjectGroup *dst_lr,
-                          int dst_x, int dst_y);
+    void copyObjectRegion(const ObjectGroup *srcLayer, const QRectF &rect,
+                          ObjectGroup *dstLayer, int dstX, int dstY);
 
 
     /**
      * This copies multiple TileLayers from one map to another.
      * Only the region \a region is considered for copying.
      * In the destination it will come to the region translated by Offset.
-     * The parameter \a LayerTranslation is a map of which layers of the rulesmap
+     * The parameter \a layerTranslation is a map of which layers of the rulesmap
      * should get copied into which layers of the working map.
      */
     void copyMapRegion(const QRegion &region, QPoint Offset,
-                       const RuleOutput *LayerTranslation);
+                       const RuleOutput &layerTranslation);
 
     /**
      * This goes through all the positions of the mMapWork and checks if
@@ -232,9 +272,9 @@ private:
      * if there is a match all Layers are copied to mMapWork.
      * @param ruleIndex: the region which should be compared to all positions
      *              of mMapWork will be looked up in mRulesInput and mRulesOutput
-     * @return where: an rectangle where the rule actually got applied
+     * @return a rectangle where the rule actually got applied
      */
-    QRect applyRule(const int ruleIndex, const QRect &where);
+    QRect applyRule(int ruleIndex, const QRect &where);
 
     /**
      * Cleans up the data structures filled by setupRuleMapLayers(),
@@ -267,7 +307,7 @@ private:
     /**
      * map containing the rules, usually different than mMapWork
      */
-    Map *mMapRules;
+    std::unique_ptr<Map> mMapRules;
 
     /**
      * This contains all added tilesets as pointers.
@@ -279,9 +319,9 @@ private:
     QVector<SharedTileset> mAddedTilesets;
 
     /**
-     * description see: mAddedTilesets, just described by Strings
+     * description see: mAddedTilesets
      */
-    QList<QString> mAddedTileLayers;
+    QVector<Layer*> mAddedLayers;
 
     /**
      * Points to the tilelayer, which defines the input regions.
@@ -302,16 +342,16 @@ private:
     /**
      * List of Regions in mMapRules to know where the input rules are
      */
-    QList<QRegion> mRulesInput;
-    
+    QVector<QRegion> mRulesInput;
+
     /**
-     * List of regions in mMapRules to know where the output of a 
+     * List of regions in mMapRules to know where the output of a
      * rule is.
      * mRulesOutput[i] is the output of that rule,
      * which has the input at mRulesInput[i], meaning that mRulesInput
      * and mRulesOutput must match with the indexes.
      */
-    QList<QRegion> mRulesOutput;
+    QVector<QRegion> mRulesOutput;
 
     /**
      * The inner set with layers to indexes is needed for translating
@@ -326,7 +366,7 @@ private:
      * The list is used to hold different translation tables
      * => one of the tables is chosen by chance, so randomness is available
      */
-    QList<RuleOutput*> mLayerList;
+    QVector<RuleOutput> mLayerList;
 
     /**
      * store the name of the processed rules file, to have detailed
@@ -334,24 +374,7 @@ private:
      */
     QString mRulePath;
 
-    /**
-     * determines if all tiles in all touched layers should be deleted first.
-     */
-    bool mDeleteTiles;
-
-    /**
-     * This variable determines, how many overlapping tiles should be used.
-     * The bigger the more area is remapped at an automapping operation.
-     * This can lead to higher latency, but provides a better behavior on
-     * interactive automapping.
-     * It defaults to zero.
-     */
-    int mAutoMappingRadius;
-
-    /**
-     * Determines if a rule is allowed to overlap itself.
-     */
-    bool mNoOverlappingRules;
+    Options mOptions;
 
     QSet<QString> mTouchedTileLayers;
     QSet<QString> mTouchedObjectGroups;
@@ -360,7 +383,4 @@ private:
     QString mWarning;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // AUTOMAPPER_H

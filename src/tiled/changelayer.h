@@ -18,17 +18,38 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CHANGELAYER_H
-#define CHANGELAYER_H
+#pragma once
 
 #include "undocommands.h"
 
+#include <QPointF>
+#include <QSize>
 #include <QUndoCommand>
 
 namespace Tiled {
-namespace Internal {
 
-class MapDocument;
+class Layer;
+class TileLayer;
+
+class Document;
+
+class SetLayerName : public QUndoCommand
+{
+public:
+    SetLayerName(Document *document,
+                 Layer *layer,
+                 const QString &name);
+
+    void undo() override;
+    void redo() override;
+
+private:
+    void swapName();
+
+    Document *mDocument;
+    Layer *mLayer;
+    QString mName;
+};
 
 /**
  * Used for changing layer visibility.
@@ -36,20 +57,42 @@ class MapDocument;
 class SetLayerVisible : public QUndoCommand
 {
 public:
-    SetLayerVisible(MapDocument *mapDocument,
-                    int layerIndex,
+    SetLayerVisible(Document *document,
+                    Layer *layer,
                     bool visible);
 
-    void undo() { swap(); }
-    void redo() { swap(); }
+    void undo() override { swap(); }
+    void redo() override { swap(); }
 
 private:
     void swap();
 
-    MapDocument *mMapDocument;
-    int mLayerIndex;
+    Document *mDocument;
+    Layer *mLayer;
     bool mVisible;
 };
+
+/**
+ * Used for changing layer lock.
+ */
+class SetLayerLocked : public QUndoCommand
+{
+public:
+    SetLayerLocked(Document *document,
+                   Layer *layer,
+                   bool locked);
+
+    void undo() override { swap(); }
+    void redo() override { swap(); }
+
+private:
+    void swap();
+
+    Document *mDocument;
+    Layer *mLayer;
+    bool mLocked;
+};
+
 
 /**
  * Used for changing layer opacity.
@@ -57,27 +100,74 @@ private:
 class SetLayerOpacity : public QUndoCommand
 {
 public:
-    SetLayerOpacity(MapDocument *mapDocument,
-                    int layerIndex,
-                    float opacity);
+    SetLayerOpacity(Document *document,
+                    Layer *layer,
+                    qreal opacity);
 
-    void undo() { setOpacity(mOldOpacity); }
-    void redo() { setOpacity(mNewOpacity); }
+    void undo() override { setOpacity(mOldOpacity); }
+    void redo() override { setOpacity(mNewOpacity); }
 
-    int id() const { return Cmd_ChangeLayerOpacity; }
+    int id() const override { return Cmd_ChangeLayerOpacity; }
 
-    bool mergeWith(const QUndoCommand *other);
+    bool mergeWith(const QUndoCommand *other) override;
 
 private:
-    void setOpacity(float opacity);
+    void setOpacity(qreal opacity);
 
-    MapDocument *mMapDocument;
-    int mLayerIndex;
-    float mOldOpacity;
-    float mNewOpacity;
+    Document *mDocument;
+    Layer *mLayer;
+    qreal mOldOpacity;
+    qreal mNewOpacity;
 };
 
-} // namespace Internal
-} // namespace Tiled
+/**
+ * Used for changing the layer offset.
+ */
+class SetLayerOffset : public QUndoCommand
+{
+public:
+    SetLayerOffset(Document *document,
+                   Layer *layer,
+                   const QPointF &offset,
+                   QUndoCommand *parent = nullptr);
 
-#endif // CHANGELAYER_H
+    void undo() override { setOffset(mOldOffset); }
+    void redo() override { setOffset(mNewOffset); }
+
+    int id() const override { return Cmd_ChangeLayerOffset; }
+
+private:
+    void setOffset(const QPointF &offset);
+
+    Document *mDocument;
+    Layer *mLayer;
+    QPointF mOldOffset;
+    QPointF mNewOffset;
+};
+
+/**
+ * Used for changing the tile layer size.
+ *
+ * Does not affect the contents of the tile layer, as opposed to the
+ * ResizeTileLayer command.
+ */
+class SetTileLayerSize : public QUndoCommand
+{
+public:
+    SetTileLayerSize(Document *document,
+                     TileLayer *tileLayer,
+                     QSize size,
+                     QUndoCommand *parent = nullptr);
+
+    void undo() override { swap(); }
+    void redo() override { swap(); }
+
+private:
+    void swap();
+
+    Document *mDocument;
+    TileLayer *mTileLayer;
+    QSize mSize;
+};
+
+} // namespace Tiled

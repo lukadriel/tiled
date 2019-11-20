@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FLIPMAPOBJECTS_H
-#define FLIPMAPOBJECTS_H
+#pragma once
 
 #include "mapobject.h"
 
@@ -27,29 +26,31 @@
 #include <QUndoCommand>
 
 namespace Tiled {
-namespace Internal {
 
-class MapDocument;
+class Document;
 
 class FlipMapObjects : public QUndoCommand
 {
 public:
-    FlipMapObjects(MapDocument *mapDocument,
+    FlipMapObjects(Document *document,
                    const QList<MapObject *> &mapObjects,
                    FlipDirection flipDirection);
 
-    void undo() { flip(); }
-    void redo() { flip(); }
+    void undo() override { flip(); }
+    void redo() override { flip(); }
 
 private:
     void flip();
 
-    MapDocument *mMapDocument;
-    QList<MapObject *> mMapObjects;
+    Document *mDocument;
+    const QList<MapObject *> mMapObjects;
+    QPointF mObjectsCenter;
     FlipDirection mFlipDirection;
+
+    QVector<bool> mOldRotationStates;
+    QVector<bool> mNewRotationStates;
+    QVector<bool> mOldCellStates;
+    QVector<bool> mNewCellStates;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // FLIPMAPOBJECTS_H

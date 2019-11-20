@@ -1,6 +1,7 @@
 /*
- * consoledialog.cpp
+ * consoledock.cpp
  * Copyright 2013, Samuli Tuomola <samuli.tuomola@gmail.com>
+ * Copyright 2018-2019, Thorbjørn Lindeijer <bjorn@lindeijer.nl>
  *
  * This file is part of Tiled.
  *
@@ -19,65 +20,152 @@
  */
 
 #include "consoledock.h"
-#include "pluginmanager.h"
 
+#include "logginginterface.h"
+#include "preferences.h"
+#include "scriptmanager.h"
+
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QSettings>
+#include <QShortcut>
 #include <QVBoxLayout>
 
-using namespace Tiled;
-using namespace Tiled::Internal;
+namespace Tiled {
 
 ConsoleDock::ConsoleDock(QWidget *parent)
     : QDockWidget(parent)
+    , mPlainTextEdit(new QPlainTextEdit)
+    , mLineEdit(new QLineEdit)
 {
     setObjectName(QLatin1String("ConsoleDock"));
 
-    setWindowTitle(tr("Debug Console"));
-
     QWidget *widget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(widget);
-    layout->setMargin(5);
+    layout->setMargin(0);
+    layout->setSpacing(0);
 
-    plainTextEdit = new QPlainTextEdit;
-    plainTextEdit->setReadOnly(true);
+    mPlainTextEdit->setReadOnly(true);
 
-    plainTextEdit->setStyleSheet(QString::fromUtf8(
-                            "QAbstractScrollArea {"
-                            " background-color: black;"
-                            " color:green;"
-                            "}"
-                            ));
+    QPalette p = mPlainTextEdit->palette();
+    p.setColor(QPalette::Base, Qt::black);
+    p.setColor(QPalette::Text, Qt::lightGray);
+    mPlainTextEdit->setPalette(p);
 
-    layout->addWidget(plainTextEdit);
+    mLineEdit->setClearButtonEnabled(true);
+    connect(mLineEdit, &QLineEdit::returnPressed,
+            this, &ConsoleDock::executeScript);
 
-    PluginManager *pm = PluginManager::instance();
+    auto previousShortcut = new QShortcut(Qt::Key_Up, mLineEdit, nullptr, nullptr, Qt::WidgetShortcut);
+    connect(previousShortcut, &QShortcut::activated, [this] { moveHistory(-1); });
 
-    foreach (LoggingInterface *plg, pm->interfaces<LoggingInterface>()) {
+    auto nextShortcut = new QShortcut(Qt::Key_Down, mLineEdit, nullptr, nullptr, Qt::WidgetShortcut);
+    connect(nextShortcut, &QShortcut::activated, [this] { moveHistory(1); });
 
-        connect(pm->plugin(plg)->instance, SIGNAL(info(QString)),
-                this, SLOT(appendInfo(QString)));
+    layout->addWidget(mPlainTextEdit);
+    layout->addWidget(mLineEdit);
 
-        connect(pm->plugin(plg)->instance, SIGNAL(error(QString)),
-                this, SLOT(appendError(QString)));
-
-    }
+    auto& logger = LoggingInterface::instance();
+    connect(&logger, &LoggingInterface::info, this, &ConsoleDock::appendInfo);
+    connect(&logger, &LoggingInterface::warning, this, &ConsoleDock::appendWarning);
+    connect(&logger, &LoggingInterface::error, this, &ConsoleDock::appendError);
 
     setWidget(widget);
-}
 
-void ConsoleDock::appendInfo(QString str)
-{
-    plainTextEdit->appendHtml(str
-                    .prepend(QString::fromUtf8("<pre>"))
-                    .append(QString::fromUtf8("</pre>")));
-}
+    QSettings *settings = Preferences::instance()->settings();
+    mHistory = settings->value(QStringLiteral("Console/History")).toStringList();
+    mHistoryPosition = mHistory.size();
 
-void ConsoleDock::appendError(QString str)
-{
-    plainTextEdit->appendHtml(str
-                    .prepend(QString::fromUtf8("<pre style='color:red'>"))
-                    .append(QString::fromUtf8("</pre>")));
+    connect(this, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible)
+            mLineEdit->setFocus();
+    });
+
+    retranslateUi();
 }
 
 ConsoleDock::~ConsoleDock()
 {
 }
+
+void ConsoleDock::appendInfo(const QString &str)
+{
+    mPlainTextEdit->appendHtml(QLatin1String("<pre>") + str.toHtmlEscaped() +
+                               QLatin1String("</pre>"));
+}
+
+void ConsoleDock::appendWarning(const QString &str)
+{
+    mPlainTextEdit->appendHtml(QLatin1String("<pre style='color:orange'>") + str.toHtmlEscaped() +
+                               QLatin1String("</pre>"));
+}
+
+void ConsoleDock::appendError(const QString &str)
+{
+    mPlainTextEdit->appendHtml(QLatin1String("<pre style='color:red'>") + str.toHtmlEscaped() +
+                               QLatin1String("</pre>"));
+}
+
+void ConsoleDock::appendScript(const QString &str)
+{
+    mPlainTextEdit->appendHtml(QLatin1String("<pre style='color:lightgreen'>&gt; ") + str.toHtmlEscaped() +
+                               QLatin1String("</pre>"));
+}
+
+void ConsoleDock::executeScript()
+{
+    const QString script = mLineEdit->text();
+    if (script.isEmpty())
+        return;
+
+    appendScript(script);
+
+    const QJSValue result = ScriptManager::instance().evaluate(script);
+    if (!result.isError() && !result.isUndefined())
+        appendInfo(result.toString());
+
+    mLineEdit->clear();
+
+    mHistory.append(script);
+    mHistoryPosition = mHistory.size();
+
+    // Remember the last few script lines
+    QSettings *settings = Preferences::instance()->settings();
+    settings->setValue(QStringLiteral("Console/History"),
+                       QStringList(mHistory.mid(mHistory.size() - 10)));
+}
+
+void ConsoleDock::moveHistory(int direction)
+{
+    int newPosition = qBound(0, mHistoryPosition + direction, mHistory.size());
+    if (newPosition == mHistoryPosition)
+        return;
+
+    if (newPosition < mHistory.size())
+        mLineEdit->setText(mHistory.at(newPosition));
+    else
+        mLineEdit->clear();
+
+    mHistoryPosition = newPosition;
+}
+
+void ConsoleDock::changeEvent(QEvent *e)
+{
+    QDockWidget::changeEvent(e);
+
+    switch (e->type()) {
+    case QEvent::LanguageChange:
+        retranslateUi();
+        break;
+    default:
+        break;
+    }
+}
+
+void ConsoleDock::retranslateUi()
+{
+    setWindowTitle(tr("Console"));
+    mLineEdit->setPlaceholderText(tr("Execute script"));
+}
+
+} // namespace Tiled

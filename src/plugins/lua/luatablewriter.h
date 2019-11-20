@@ -18,11 +18,11 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LUATABLEWRITER_H
-#define LUATABLEWRITER_H
+#pragma once
 
 #include <QByteArray>
 #include <QString>
+#include <QVariant>
 
 class QIODevice;
 
@@ -53,18 +53,22 @@ public:
 
     void writeKeyAndValue(const QByteArray &key, int value);
     void writeKeyAndValue(const QByteArray &key, unsigned value);
+    void writeKeyAndValue(const QByteArray &key, float value);
     void writeKeyAndValue(const QByteArray &key, double value);
     void writeKeyAndValue(const QByteArray &key, bool value);
     void writeKeyAndValue(const QByteArray &key, const char *value);
     void writeKeyAndValue(const QByteArray &key, const QByteArray &value);
     void writeKeyAndValue(const QByteArray &key, const QString &value);
 
-    void writeQuotedKeyAndValue(const QString &key, const QString &value);
+    void writeQuotedKeyAndValue(const QString &key, const QVariant &value);
     void writeKeyAndUnquotedValue(const QByteArray &key,
                                   const QByteArray &value);
 
     void setSuppressNewlines(bool suppressNewlines);
     bool suppressNewlines() const;
+
+    void setMinimize(bool minimize);
+    bool minimize() const;
 
     void prepareNewLine();
 
@@ -77,18 +81,19 @@ private:
     void writeIndent();
 
     void writeNewline();
-    void write(const char *bytes, unsigned length);
+    void write(const char *bytes, qint64 length);
     void write(const char *bytes);
     void write(const QByteArray &bytes);
     void write(char c);
 
     QIODevice *m_device;
-    int m_indent;
-    char m_valueSeparator;
-    bool m_suppressNewlines;
-    bool m_newLine;
-    bool m_valueWritten;
-    bool m_error;
+    int m_indent { 0 };
+    char m_valueSeparator { ',' };
+    bool m_suppressNewlines { false };
+    bool m_minimize { false };
+    bool m_newLine { true };
+    bool m_valueWritten { false };
+    bool m_error { false };
 };
 
 inline void LuaTableWriter::writeValue(int value)
@@ -105,6 +110,9 @@ inline void LuaTableWriter::writeKeyAndValue(const QByteArray &key, int value)
 
 inline void LuaTableWriter::writeKeyAndValue(const QByteArray &key, unsigned value)
 { writeKeyAndUnquotedValue(key, QByteArray::number(value)); }
+
+inline void LuaTableWriter::writeKeyAndValue(const QByteArray &key, float value)
+{ writeKeyAndValue(key, static_cast<double>(value)); }
 
 inline void LuaTableWriter::writeKeyAndValue(const QByteArray &key, double value)
 { writeKeyAndUnquotedValue(key, QByteArray::number(value)); }
@@ -134,6 +142,14 @@ inline void LuaTableWriter::setSuppressNewlines(bool suppressNewlines)
 inline bool LuaTableWriter::suppressNewlines() const
 { return m_suppressNewlines; }
 
-} // namespace Lua
+/**
+ * Sets whether output should be minimized. This implies suppressing newlines
+ * and in addition will avoid printing unnecessary spaces.
+ */
+inline void LuaTableWriter::setMinimize(bool minimize)
+{ m_minimize = minimize; }
 
-#endif // LUATABLEWRITER_H
+inline bool LuaTableWriter::minimize() const
+{ return m_minimize; }
+
+} // namespace Lua

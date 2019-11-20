@@ -18,16 +18,15 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ADDREMOVETILESET_H
-#define ADDREMOVETILESET_H
+#pragma once
 
 #include "tileset.h"
+#include "undocommands.h"
 
 #include <QCoreApplication>
 #include <QUndoCommand>
 
 namespace Tiled {
-namespace Internal {
 
 class MapDocument;
 
@@ -40,7 +39,7 @@ public:
     AddRemoveTileset(MapDocument *mapDocument,
                      int index,
                      const SharedTileset &tileset,
-                     QUndoCommand *parent = 0);
+                     QUndoCommand *parent = nullptr);
 
     ~AddRemoveTileset();
 
@@ -48,7 +47,6 @@ protected:
     void addTileset();
     void removeTileset();
 
-private:
     MapDocument *mMapDocument;
     SharedTileset mTileset;
     int mIndex;
@@ -57,17 +55,19 @@ private:
 /**
  * Adds a tileset to a map.
  */
-class AddTileset : public AddRemoveTileset
+class AddTileset : public AddRemoveTileset, public ClonableUndoCommand
 {
 public:
     AddTileset(MapDocument *mapDocument, const SharedTileset &tileset,
-               QUndoCommand *parent = 0);
+               QUndoCommand *parent = nullptr);
 
-    void undo()
+    void undo() override
     { removeTileset(); }
 
-    void redo()
+    void redo() override
     { addTileset(); }
+
+    AddTileset *clone(QUndoCommand *parent = nullptr) const override;
 };
 
 /**
@@ -78,14 +78,11 @@ class RemoveTileset : public AddRemoveTileset
 public:
     RemoveTileset(MapDocument *mapDocument, int index);
 
-    void undo()
+    void undo() override
     { addTileset(); }
 
-    void redo()
+    void redo() override
     { removeTileset(); }
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ADDREMOVETILESET_H

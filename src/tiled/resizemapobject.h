@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RESIZEMAPOBJECT_H
-#define RESIZEMAPOBJECT_H
+#pragma once
 
 #include <QUndoCommand>
 #include <QSizeF>
@@ -28,33 +27,29 @@ namespace Tiled {
 
 class MapObject;
 
-namespace Internal {
-
-class MapDocument;
+class Document;
 
 class ResizeMapObject : public QUndoCommand
 {
 public:
-    ResizeMapObject(MapDocument *mapDocument,
+    ResizeMapObject(Document *document,
                     MapObject *mapObject,
                     const QSizeF &oldSize);
 
-    ResizeMapObject(MapDocument *mapDocument,
+    ResizeMapObject(Document *document,
                     MapObject *mapObject,
                     const QSizeF &newSize,
                     const QSizeF &oldSize);
 
-    void undo();
-    void redo();
+    void undo() override;
+    void redo() override;
 
 private:
-    MapDocument *mMapDocument;
+    Document *mDocument;
     MapObject *mMapObject;
     QSizeF mOldSize;
     QSizeF mNewSize;
+    bool mOldChangeState;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // RESIZEMAPOBJECT_H

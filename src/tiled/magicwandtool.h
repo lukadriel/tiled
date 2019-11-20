@@ -21,43 +21,31 @@
  */
 
 
-#ifndef MAGICWANDTOOL_H
-#define MAGICWANDTOOL_H
+#pragma once
 
 
-#include "abstracttiletool.h"
+#include "abstracttileselectiontool.h"
 
 #include "tilelayer.h"
 
 namespace Tiled {
-namespace Internal {
 
 class MapDocument;
 
 /**
  * Implements a tool that selects a region of connected similar tiles on the layer.
  */
-class MagicWandTool : public AbstractTileTool
+class MagicWandTool : public AbstractTileSelectionTool
 {
     Q_OBJECT
 
 public:
-    MagicWandTool(QObject *parent = 0);
+    MagicWandTool(QObject *parent = nullptr);
 
-    void mousePressed(QGraphicsSceneMouseEvent *event);
-    void mouseReleased(QGraphicsSceneMouseEvent *event);
-
-    void languageChanged();
+    void languageChanged() override;
 
 protected:
-    void tilePositionChanged(const QPoint &tilePos);
-
-private:
-
-    QRegion mSelectedRegion;
+    void tilePositionChanged(QPoint tilePos) override;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // MAGICWANDTOOL_H

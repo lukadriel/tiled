@@ -24,8 +24,9 @@
 #include <QDebug>
 #include <QFileInfo>
 
+#include "qtcompat_p.h"
+
 using namespace Tiled;
-using namespace Tiled::Internal;
 
 CommandLineParser::CommandLineParser()
     : mLongestArgument(0)
@@ -72,7 +73,7 @@ bool CommandLineParser::parse(const QStringList &arguments)
         if (arg.length() == 1) {
             // Traditionally a single hyphen means read file from stdin,
             // write file to stdout. This isn't supported right now.
-            qWarning() << qPrintable(tr("Bad argument %1: lonely hyphen").arg(index));
+            qWarning().noquote() << tr("Bad argument %1: lonely hyphen").arg(index);
             showHelp();
             return false;
         }
@@ -86,7 +87,7 @@ bool CommandLineParser::parse(const QStringList &arguments)
             }
 
             if (!handleLongOption(arg)) {
-                qWarning() << qPrintable(tr("Unknown long argument %1: %2").arg(index).arg(arg));
+                qWarning().noquote() << tr("Unknown long argument %1: %2").arg(index).arg(arg);
                 mShowHelp = true;
                 break;
             }
@@ -98,8 +99,7 @@ bool CommandLineParser::parse(const QStringList &arguments)
         for (int i = 1; i < arg.length(); ++i) {
             const QChar c = arg.at(i);
             if (!handleShortOption(c)) {
-                qWarning()
-                    << qPrintable(tr("Unknown short argument %1.%2: %3").arg(index).arg(i).arg(c));
+                qWarning().noquote() << tr("Unknown short argument %1.%2: %3").arg(index).arg(i).arg(c);
                 mShowHelp = true;
                 break;
             }
@@ -114,24 +114,26 @@ bool CommandLineParser::parse(const QStringList &arguments)
     return true;
 }
 
-void CommandLineParser::showHelp()
+void CommandLineParser::showHelp() const
 {
-    qWarning().nospace() << qPrintable(tr("Usage:\n  %1 [options] [files...]").arg(mCurrentProgramName))
-                         << "\n\n" << qPrintable(tr("Options:"));
+    qWarning().noquote() << tr("Usage:\n  %1 [options] [files...]").arg(mCurrentProgramName)
+                         << "\n\n"
+                         << tr("Options:");
 
-    qWarning("  -h %-*s : %s", mLongestArgument, "--help", qPrintable(tr("Display this help")));
+    qWarning("  -h %-*s : %s", mLongestArgument, "--help", qUtf8Printable(tr("Display this help")));
 
-    foreach (const Option &option, mOptions) {
+    for (const Option &option : mOptions) {
         if (!option.shortName.isNull()) {
             qWarning("  -%c %-*s : %s",
                      option.shortName.toLatin1(),
-                     mLongestArgument, qPrintable(option.longName),
-                     qPrintable(option.help));
+                     mLongestArgument,
+                     qUtf8Printable(option.longName),
+                     qUtf8Printable(option.help));
         } else {
             qWarning("     %-*s : %s",
-                     mLongestArgument, qPrintable(option.longName),
-                     qPrintable(option.help));
-
+                     mLongestArgument,
+                     qUtf8Printable(option.longName),
+                     qUtf8Printable(option.help));
         }
     }
 
@@ -145,7 +147,7 @@ bool CommandLineParser::handleLongOption(const QString &longName)
         return true;
     }
 
-    foreach (const Option &option, mOptions) {
+    for (const Option &option : qAsConst(mOptions)) {
         if (longName == option.longName) {
             option.callback(option.data);
             return true;
@@ -162,7 +164,7 @@ bool CommandLineParser::handleShortOption(QChar c)
         return true;
     }
 
-    foreach (const Option &option, mOptions) {
+    for (const Option &option : qAsConst(mOptions)) {
         if (c == option.shortName) {
             option.callback(option.data);
             return true;

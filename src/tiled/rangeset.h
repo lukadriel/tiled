@@ -18,13 +18,11 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RANGESET_H
-#define RANGESET_H
+#pragma once
 
 #include <map>
 
 namespace Tiled {
-namespace Internal {
 
 /**
  * Logically, a set, but implemented as a set of ranges. This class is only
@@ -186,7 +184,4 @@ public:
     }
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // RANGESET_H

@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ABSTRACTTILETOOL_H
-#define ABSTRACTTILETOOL_H
+#pragma once
 
 #include "abstracttool.h"
 
@@ -27,10 +26,9 @@ namespace Tiled {
 
 class TileLayer;
 
-namespace Internal {
-
 class BrushItem;
 class MapDocument;
+class TileStamp;
 
 /**
  * A convenient base class for tile based tools.
@@ -38,40 +36,46 @@ class MapDocument;
 class AbstractTileTool : public AbstractTool
 {
     Q_OBJECT
+    Q_INTERFACES(Tiled::AbstractTool)
+
+    Q_PROPERTY(QPoint tilePosition READ tilePosition)
 
 public:
     /**
      * Constructs an abstract tile tool with the given \a name and \a icon.
      */
-    AbstractTileTool(const QString &name,
+    AbstractTileTool(Id id,
+                     const QString &name,
                      const QIcon &icon,
                      const QKeySequence &shortcut,
-                     QObject *parent = 0);
+                     BrushItem *brushItem = nullptr,
+                     QObject *parent = nullptr);
 
-    ~AbstractTileTool();
+    ~AbstractTileTool() override;
 
-    void activate(MapScene *scene);
-    void deactivate(MapScene *scene);
+    void activate(MapScene *scene) override;
+    void deactivate(MapScene *scene) override;
 
-    void mouseEntered();
-    void mouseLeft();
-    void mouseMoved(const QPointF &pos, Qt::KeyboardModifiers modifiers);
+    void mouseEntered() override;
+    void mouseLeft() override;
+    void mouseMoved(const QPointF &pos, Qt::KeyboardModifiers modifiers) override;
+    void mousePressed(QGraphicsSceneMouseEvent *event) override;
 
 protected:
     void mapDocumentChanged(MapDocument *oldDocument,
-                            MapDocument *newDocument);
+                            MapDocument *newDocument) override;
 
     /**
      * Overridden to only enable this tool when the currently selected layer is
      * a tile layer.
      */
-    void updateEnabledState();
+    void updateEnabledState() override;
 
     /**
      * New virtual method to implement for tile tools. This method is called
      * on mouse move events, but only when the tile position changes.
      */
-    virtual void tilePositionChanged(const QPoint &tilePos) = 0;
+    virtual void tilePositionChanged(QPoint tilePos) = 0;
 
     /**
      * Updates the status info with the current tile position. When the mouse
@@ -99,7 +103,7 @@ protected:
     /**
      * Returns the last recorded tile position of the mouse.
      */
-    QPoint tilePosition() const { return QPoint(mTileX, mTileY); }
+    QPoint tilePosition() const { return mTilePosition; }
 
     /**
      * Returns the brush item. The brush item is used to give an indication of
@@ -110,22 +114,23 @@ protected:
     BrushItem *brushItem() const { return mBrushItem; }
 
     /**
-     * Returns the current tile layer, or 0 if no tile layer is currently
+     * Returns the current tile layer, or null if no tile layer is currently
      * selected.
      */
     TileLayer *currentTileLayer() const;
 
+    virtual void updateBrushVisibility();
+    virtual QList<Layer *> targetLayers() const;
+
+    QList<Layer *> targetLayersForStamp(const TileStamp &stamp) const;
+
 private:
     void setBrushVisible(bool visible);
-    void updateBrushVisibility();
 
     TilePositionMethod mTilePositionMethod;
     BrushItem *mBrushItem;
-    int mTileX, mTileY;
+    QPoint mTilePosition;
     bool mBrushVisible;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // ABSTRACTTILETOOL_H

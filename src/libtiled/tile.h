@@ -27,19 +27,45 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TILE_H
-#define TILE_H
+#pragma once
 
 #include "object.h"
+#include "tiled.h"
 
 #include <QPixmap>
 #include <QSharedPointer>
+#include <QUrl>
+
+#include <memory>
 
 namespace Tiled {
 
 class ObjectGroup;
 class Terrain;
 class Tileset;
+
+/**
+ * Convenience function for creating tile terrain information.
+ */
+inline unsigned makeTerrain(int id)
+{
+    id &= 0xFF;
+    return id << 24 | id << 16 | id << 8 | id;
+}
+
+/**
+ * Convenience function for creating tile terrain information.
+ */
+inline unsigned makeTerrain(int topLeft,
+                            int topRight,
+                            int bottomLeft,
+                            int bottomRight)
+{
+    return (topLeft & 0xFF) << 24 |
+           (topRight & 0xFF) << 16 |
+           (bottomLeft & 0xFF) << 8 |
+           (bottomRight & 0xFF);
+}
 
 /**
  * Returns the given \a terrain with the \a corner modified to \a terrainId.
@@ -56,21 +82,23 @@ inline unsigned setTerrainCorner(unsigned terrain, int corner, int terrainId)
  */
 struct Frame
 {
+    bool operator == (const Frame &frame) const
+    {
+        return tileId == frame.tileId &&
+                duration == frame.duration;
+    }
+
     int tileId;
     int duration;
 };
 
 class TILEDSHARED_EXPORT Tile : public Object
 {
-public:
-    Tile(const QPixmap &image,
-         int id,
-         Tileset *tileset);
+    Q_OBJECT
 
-    Tile(const QPixmap &image,
-         const QString &imageSource,
-         int id,
-         Tileset *tileset);
+public:
+    Tile(int id, Tileset *tileset);
+    Tile(const QPixmap &image, int id, Tileset *tileset);
 
     ~Tile();
 
@@ -82,16 +110,19 @@ public:
     const QPixmap &image() const;
     void setImage(const QPixmap &image);
 
-    const QPixmap &currentFrameImage() const;
+    const Tile *currentFrameTile() const;
 
-    const QString &imageSource() const;
-    void setImageSource(const QString &imageSource);
+    const QUrl &imageSource() const;
+    void setImageSource(const QUrl &imageSource);
 
     int width() const;
     int height() const;
     QSize size() const;
 
     QPoint offset() const;
+
+    const QString &type() const;
+    void setType(const QString &type);
 
     Terrain *terrainAtCorner(int corner) const;
 
@@ -101,27 +132,35 @@ public:
     inline unsigned terrain() const;
     void setTerrain(unsigned terrain);
 
-    float probability() const;
-    void setProbability(float probability);
+    qreal probability() const;
+    void setProbability(qreal probability);
 
     ObjectGroup *objectGroup() const;
-    void setObjectGroup(ObjectGroup *objectGroup);
-    ObjectGroup *swapObjectGroup(ObjectGroup *objectGroup);
+    void setObjectGroup(std::unique_ptr<ObjectGroup> objectGroup);
+    void swapObjectGroup(std::unique_ptr<ObjectGroup> &objectGroup);
 
     const QVector<Frame> &frames() const;
     void setFrames(const QVector<Frame> &frames);
     bool isAnimated() const;
     int currentFrameIndex() const;
+    bool resetAnimation();
     bool advanceAnimation(int ms);
+
+    LoadingStatus imageStatus() const;
+    void setImageStatus(LoadingStatus status);
+
+    Tile *clone(Tileset *tileset) const;
 
 private:
     int mId;
     Tileset *mTileset;
     QPixmap mImage;
-    QString mImageSource;
+    QUrl mImageSource;
+    LoadingStatus mImageStatus;
+    QString mType;
     unsigned mTerrain;
-    float mProbability;
-    ObjectGroup *mObjectGroup;
+    qreal mProbability;
+    std::unique_ptr<ObjectGroup> mObjectGroup;
 
     QVector<Frame> mFrames;
     int mCurrentFrameIndex;
@@ -160,19 +199,20 @@ inline const QPixmap &Tile::image() const
 inline void Tile::setImage(const QPixmap &image)
 {
     mImage = image;
+    mImageStatus = image.isNull() ? LoadingError : LoadingReady;
 }
 
 /**
- * Returns the file name of the external image that represents this tile.
- * When this tile doesn't refer to an external image, an empty string is
+ * Returns the URL of the external image that represents this tile.
+ * When this tile doesn't refer to an external image, an empty URL is
  * returned.
  */
-inline const QString &Tile::imageSource() const
+inline const QUrl &Tile::imageSource() const
 {
     return mImageSource;
 }
 
-inline void Tile::setImageSource(const QString &imageSource)
+inline void Tile::setImageSource(const QUrl &imageSource)
 {
     mImageSource = imageSource;
 }
@@ -202,6 +242,25 @@ inline QSize Tile::size() const
 }
 
 /**
+ * Returns the type of this tile. Tile objects that do not have a type
+ * explicitly set on them are assumed to be of the type returned by this
+ * function.
+ */
+inline const QString &Tile::type() const
+{
+    return mType;
+}
+
+/**
+ * Sets the type of this tile.
+ * \sa type()
+ */
+inline void Tile::setType(const QString &type)
+{
+    mType = type;
+}
+
+/**
  * Returns the terrain id at a given corner.
  */
 inline int Tile::cornerTerrainId(int corner) const
@@ -228,7 +287,7 @@ inline unsigned Tile::terrain() const
 /**
  * Returns the relative probability of this tile appearing while painting.
  */
-inline float Tile::probability() const
+inline qreal Tile::probability() const
 {
     return mProbability;
 }
@@ -236,7 +295,7 @@ inline float Tile::probability() const
 /**
  * Set the relative probability of this tile appearing while painting.
  */
-inline void Tile::setProbability(float probability)
+inline void Tile::setProbability(qreal probability)
 {
     mProbability = probability;
 }
@@ -247,7 +306,7 @@ inline void Tile::setProbability(float probability)
  */
 inline ObjectGroup *Tile::objectGroup() const
 {
-    return mObjectGroup;
+    return mObjectGroup.get();
 }
 
 inline const QVector<Frame> &Tile::frames() const
@@ -265,6 +324,17 @@ inline int Tile::currentFrameIndex() const
     return mCurrentFrameIndex;
 }
 
-} // namespace Tiled
+/**
+ * Returns the loading status of the image referenced by this tile.
+ */
+inline LoadingStatus Tile::imageStatus() const
+{
+    return mImageStatus;
+}
 
-#endif // TILE_H
+inline void Tile::setImageStatus(LoadingStatus status)
+{
+    mImageStatus = status;
+}
+
+} // namespace Tiled

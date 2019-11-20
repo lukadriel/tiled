@@ -18,8 +18,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TILED_INTERNAL_TILESTAMPSDOCK_H
-#define TILED_INTERNAL_TILESTAMPSDOCK_H
+#pragma once
 
 #include <QDockWidget>
 #include <QTreeView>
@@ -30,8 +29,7 @@ namespace Tiled {
 
 class TileLayer;
 
-namespace Internal {
-
+class FilterEdit;
 class TileStamp;
 class TileStampManager;
 class TileStampModel;
@@ -42,16 +40,17 @@ class TileStampsDock : public QDockWidget
     Q_OBJECT
 
 public:
-    TileStampsDock(TileStampManager *stampManager, QWidget *parent = 0);
+    TileStampsDock(TileStampManager *stampManager, QWidget *parent = nullptr);
 
 signals:
     void setStamp(const TileStamp &);
 
 protected:
-    void changeEvent(QEvent *e);
-    void keyPressEvent(QKeyEvent *);
+    void changeEvent(QEvent *e) override;
+    void keyPressEvent(QKeyEvent *) override;
 
-private slots:
+private:
+    void indexPressed(const QModelIndex &index);
     void currentRowChanged(const QModelIndex &index);
     void showContextMenu(QPoint pos);
 
@@ -63,14 +62,14 @@ private slots:
 
     void ensureStampVisible(const TileStamp &stamp);
 
-private:
     void retranslateUi();
+    void setStampAtIndex(const QModelIndex &index);
 
     TileStampManager *mTileStampManager;
     TileStampModel *mTileStampModel;
     QSortFilterProxyModel *mProxyModel;
     TileStampView *mTileStampView;
-    QLineEdit *mFilterEdit;
+    FilterEdit *mFilterEdit;
 
     QAction *mNewStamp;
     QAction *mAddVariation;
@@ -89,12 +88,12 @@ class TileStampView : public QTreeView
     Q_OBJECT
 
 public:
-    explicit TileStampView(QWidget *parent = 0);
+    explicit TileStampView(QWidget *parent = nullptr);
 
-    QSize sizeHint() const;
+    QSize sizeHint() const override;
+
+protected:
+    bool event(QEvent *event) override;
 };
 
-} // namespace Internal
 } // namespace Tiled
-
-#endif // TILED_INTERNAL_TILESTAMPSDOCK_H

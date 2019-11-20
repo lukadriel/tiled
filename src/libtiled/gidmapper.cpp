@@ -30,14 +30,17 @@
 
 #include "compression.h"
 #include "tile.h"
+#include "tiled.h"
 #include "tileset.h"
 
 using namespace Tiled;
 
 // Bits on the far end of the 32-bit global tile ID are used for tile flags
-const int FlippedHorizontallyFlag   = 0x80000000;
-const int FlippedVerticallyFlag     = 0x40000000;
-const int FlippedAntiDiagonallyFlag = 0x20000000;
+const unsigned FlippedHorizontallyFlag   = 0x80000000;
+const unsigned FlippedVerticallyFlag     = 0x40000000;
+const unsigned FlippedAntiDiagonallyFlag = 0x20000000;
+
+const unsigned RotatedHexagonal120Flag   = 0x10000000;
 
 /**
  * Default constructor. Use \l insert to initialize the gid mapper
@@ -52,12 +55,12 @@ GidMapper::GidMapper()
  * Constructor that initializes the gid mapper using the given \a tilesets.
  */
 GidMapper::GidMapper(const QVector<SharedTileset> &tilesets)
-    : mInvalidTile(0)
+    : GidMapper()
 {
     unsigned firstGid = 1;
-    foreach (const SharedTileset &tileset, tilesets) {
-        insert(firstGid, tileset.data());
-        firstGid += tileset->tileCount();
+    for (const SharedTileset &tileset : tilesets) {
+        insert(firstGid, tileset);
+        firstGid += tileset->nextTileId();
     }
 }
 
@@ -70,14 +73,17 @@ Cell GidMapper::gidToCell(unsigned gid, bool &ok) const
     Cell result;
 
     // Read out the flags
-    result.flippedHorizontally = (gid & FlippedHorizontallyFlag);
-    result.flippedVertically = (gid & FlippedVerticallyFlag);
-    result.flippedAntiDiagonally = (gid & FlippedAntiDiagonallyFlag);
+    result.setFlippedHorizontally(gid & FlippedHorizontallyFlag);
+    result.setFlippedVertically(gid & FlippedVerticallyFlag);
+    result.setFlippedAntiDiagonally(gid & FlippedAntiDiagonallyFlag);
+
+    result.setRotatedHexagonal120(gid & RotatedHexagonal120Flag);
 
     // Clear the flags
     gid &= ~(FlippedHorizontallyFlag |
              FlippedVerticallyFlag |
-             FlippedAntiDiagonallyFlag);
+             FlippedAntiDiagonallyFlag |
+             RotatedHexagonal120Flag);
 
     if (gid == 0) {
         ok = true;
@@ -85,24 +91,16 @@ Cell GidMapper::gidToCell(unsigned gid, bool &ok) const
         ok = false;
     } else {
         // Find the tileset containing this tile
-        QMap<unsigned, Tileset*>::const_iterator i = mFirstGidToTileset.upperBound(gid);
+        QMap<unsigned, SharedTileset>::const_iterator i = mFirstGidToTileset.upperBound(gid);
         if (i == mFirstGidToTileset.begin()) {
             // Invalid global tile ID, since it lies before the first tileset
             ok = false;
         } else {
             --i; // Navigate one tileset back since upper bound finds the next
             int tileId = gid - i.key();
-            const Tileset *tileset = i.value();
+            const SharedTileset &tileset = i.value();
 
-            const int columnCount = mTilesetColumnCounts.value(tileset);
-            if (columnCount > 0 && columnCount != tileset->columnCount()) {
-                // Correct tile index for changes in image width
-                const int row = tileId / columnCount;
-                const int column = tileId % columnCount;
-                tileId = row * tileset->columnCount() + column;
-            }
-
-            result.tile = tileset->tileAt(tileId);
+            result.setTile(tileset.data(), tileId);
 
             ok = true;
         }
@@ -120,38 +118,28 @@ unsigned GidMapper::cellToGid(const Cell &cell) const
     if (cell.isEmpty())
         return 0;
 
-    const Tileset *tileset = cell.tile->tileset();
+    const Tileset *tileset = cell.tileset();
 
     // Find the first GID for the tileset
-    QMap<unsigned, Tileset*>::const_iterator i = mFirstGidToTileset.begin();
-    QMap<unsigned, Tileset*>::const_iterator i_end = mFirstGidToTileset.end();
+    QMap<unsigned, SharedTileset>::const_iterator i = mFirstGidToTileset.begin();
+    QMap<unsigned, SharedTileset>::const_iterator i_end = mFirstGidToTileset.end();
     while (i != i_end && i.value() != tileset)
         ++i;
 
     if (i == i_end) // tileset not found
         return 0;
 
-    unsigned gid = i.key() + cell.tile->id();
-    if (cell.flippedHorizontally)
+    unsigned gid = i.key() + cell.tileId();
+    if (cell.flippedHorizontally())
         gid |= FlippedHorizontallyFlag;
-    if (cell.flippedVertically)
+    if (cell.flippedVertically())
         gid |= FlippedVerticallyFlag;
-    if (cell.flippedAntiDiagonally)
+    if (cell.flippedAntiDiagonally())
         gid |= FlippedAntiDiagonallyFlag;
+    if (cell.rotatedHexagonal120())
+        gid |= RotatedHexagonal120Flag;
 
     return gid;
-}
-
-/**
- * This sets the original tileset width. In case the image size has changed,
- * the tile indexes will be adjusted automatically when using gidToCell().
- */
-void GidMapper::setTilesetWidth(const Tileset *tileset, int width)
-{
-    if (tileset->tileWidth() == 0)
-        return;
-
-    mTilesetColumnCounts.insert(tileset, tileset->columnCountForWidth(width));
 }
 
 /**
@@ -160,51 +148,62 @@ void GidMapper::setTilesetWidth(const Tileset *tileset, int width)
  * without compression.
  */
 QByteArray GidMapper::encodeLayerData(const TileLayer &tileLayer,
-                                      Map::LayerDataFormat format) const
+                                      Map::LayerDataFormat format,
+                                      QRect bounds, int compressionLevel) const
 {
     Q_ASSERT(format != Map::XML);
     Q_ASSERT(format != Map::CSV);
 
-    QByteArray tileData;
-    tileData.reserve(tileLayer.height() * tileLayer.width() * 4);
+    if (bounds.isEmpty())
+        bounds = QRect(0, 0, tileLayer.width(), tileLayer.height());
 
-    for (int y = 0; y < tileLayer.height(); ++y) {
-        for (int x = 0; x < tileLayer.width(); ++x) {
+    QByteArray tileData;
+    tileData.reserve(bounds.width() * bounds.height() * 4);
+
+    for (int y = bounds.top(); y <= bounds.bottom(); ++y) {
+        for (int x = bounds.left(); x <= bounds.right(); ++x) {
             const unsigned gid = cellToGid(tileLayer.cellAt(x, y));
-            tileData.append((char) (gid));
-            tileData.append((char) (gid >> 8));
-            tileData.append((char) (gid >> 16));
-            tileData.append((char) (gid >> 24));
+            tileData.append(static_cast<char>(gid));
+            tileData.append(static_cast<char>(gid >> 8));
+            tileData.append(static_cast<char>(gid >> 16));
+            tileData.append(static_cast<char>(gid >> 24));
         }
     }
 
     if (format == Map::Base64Gzip)
-        tileData = compress(tileData, Gzip);
+        tileData = compress(tileData, Gzip, compressionLevel);
     else if (format == Map::Base64Zlib)
-        tileData = compress(tileData, Zlib);
+        tileData = compress(tileData, Zlib, compressionLevel);
+    else if (format == Map::Base64Zstandard)
+        tileData = compress(tileData, Zstandard, compressionLevel);
 
     return tileData.toBase64();
 }
 
 GidMapper::DecodeError GidMapper::decodeLayerData(TileLayer &tileLayer,
                                                   const QByteArray &layerData,
-                                                  Map::LayerDataFormat format) const
+                                                  Map::LayerDataFormat format,
+                                                  QRect bounds) const
 {
     Q_ASSERT(format != Map::XML);
     Q_ASSERT(format != Map::CSV);
 
     QByteArray decodedData = QByteArray::fromBase64(layerData);
-    const int size = (tileLayer.width() * tileLayer.height()) * 4;
+    const int size = bounds.width() * bounds.height() * 4;
 
-    if (format == Map::Base64Gzip || format == Map::Base64Zlib)
-        decodedData = decompress(decodedData, size);
+    if (format == Map::Base64Gzip)
+        decodedData = decompress(decodedData, size, Gzip);
+    else if (format == Map::Base64Zlib)
+        decodedData = decompress(decodedData, size, Zlib);
+    else if (format == Map::Base64Zstandard)
+        decodedData = decompress(decodedData, size, Zstandard);
 
     if (size != decodedData.length())
         return CorruptLayerData;
 
     const unsigned char *data = reinterpret_cast<const unsigned char*>(decodedData.constData());
-    int x = 0;
-    int y = 0;
+    int x = bounds.x();
+    int y = bounds.y();
     bool ok;
 
     for (int i = 0; i < size - 3; i += 4) {
@@ -222,8 +221,8 @@ GidMapper::DecodeError GidMapper::decodeLayerData(TileLayer &tileLayer,
         tileLayer.setCell(x, y, result);
 
         x++;
-        if (x == tileLayer.width()) {
-            x = 0;
+        if (x > bounds.right()) {
+            x = bounds.x();
             y++;
         }
     }
